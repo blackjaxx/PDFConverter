@@ -40,3 +40,6 @@ Resources/tools/tesseract/
 # Env / secrets
 .env
 *.pem
+
+# Local dev tools (downloaded gh CLI, etc.)
+.tools/
