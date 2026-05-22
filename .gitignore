@@ -1,0 +1,42 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/*/.build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Tools (large binaries — bundle locally, do not commit)
+Resources/tools/poppler/
+Resources/tools/qpdf/
+Resources/tools/ghostscript/
+Resources/tools/libreoffice/
+Resources/tools/tesseract/
+
+# Keep tools README
+!Resources/tools/README.md
+
+# Archives
+*.dmg
+*.zip
+
+# Env / secrets
+.env
+*.pem
