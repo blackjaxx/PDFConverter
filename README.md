@@ -61,4 +61,6 @@ PDFConverter.app/Contents/Resources/tools/
 
 ## 许可证
 
-按需自行添加；捆绑的 Poppler/qpdf/Ghostscript/LibreOffice/Tesseract 请遵循各自开源协议。
+本项目采用 [MIT License](LICENSE) 发布，供学习、研究与二次开发使用，欢迎 Issue 与 PR。
+
+捆绑的 Poppler、qpdf、Ghostscript、LibreOffice、Tesseract 等第三方工具请遵循其各自的开源协议。
