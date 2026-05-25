@@ -16,6 +16,7 @@ public enum ConversionCategory: String, CaseIterable, Codable, Sendable {
     case encrypt
     case decrypt
     case ocr
+    case ai
 }
 
 public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -39,6 +40,9 @@ public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendabl
     case encryptPDF
     case decryptPDF
     case ocrSearchablePDF
+    case pdfAISummary
+    case pdfAITranslate
+    case pdfAIToMarkdown
 
     public var id: String { rawValue }
 
@@ -58,6 +62,7 @@ public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendabl
         case .encryptPDF: return .encrypt
         case .decryptPDF: return .decrypt
         case .ocrSearchablePDF: return .ocr
+        case .pdfAISummary, .pdfAITranslate, .pdfAIToMarkdown: return .ai
         }
     }
 
@@ -83,13 +88,21 @@ public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendabl
         case .encryptPDF: return "加密 PDF"
         case .decryptPDF: return "解密 PDF"
         case .ocrSearchablePDF: return "OCR 可搜索 PDF"
+        case .pdfAISummary: return "AI 摘要 (DeepSeek)"
+        case .pdfAITranslate: return "AI 翻译 (DeepSeek)"
+        case .pdfAIToMarkdown: return "AI → Markdown (DeepSeek)"
         }
+    }
+
+    public var requiresNetwork: Bool {
+        category == .ai
     }
 
     public var isAvailableInMVP: Bool {
         switch self {
         case .pdfToPNG, .pdfToJPEG, .pngToPDF, .jpegToPDF, .mergePDF, .splitPDF, .rotatePDF,
-             .pdfToText, .compressPDF, .wordToPDF, .excelToPDF, .pptToPDF, .ocrSearchablePDF:
+             .pdfToText, .compressPDF, .wordToPDF, .excelToPDF, .pptToPDF, .ocrSearchablePDF,
+             .pdfAISummary, .pdfAITranslate, .pdfAIToMarkdown:
             return true
         default:
             return false

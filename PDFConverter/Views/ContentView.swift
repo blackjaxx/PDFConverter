@@ -29,6 +29,18 @@ struct ConversionPanelView: View {
                 Text(viewModel.selectedType.displayName)
                     .font(.title2.bold())
 
+                if viewModel.needsDeepSeekConfiguration {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("请先在 设置 → DeepSeek 填写 API Key")
+                            .font(.caption)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+                }
+
                 Text("引擎: \(viewModel.engineLabel(for: viewModel.selectedType))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -62,7 +74,7 @@ struct ConversionPanelView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(viewModel.inputURLs.isEmpty)
+                .disabled(viewModel.inputURLs.isEmpty || viewModel.needsDeepSeekConfiguration)
             }
             .padding(24)
         }

@@ -44,6 +44,15 @@ App-only engines (WebKit) live in the app target but conform to `ConversionEngin
 | LibreOffice | Office↔PDF/Word/Excel |
 | Tesseract | OCR 可搜索 PDF |
 | WebKit (App) | HTML→PDF |
+| DeepSeek (App) | AI 摘要 / 翻译 / Markdown |
+
+### AI pipeline
+
+1. `PDFTextExtractor` (Poppler `pdftotext`)
+2. `DeepSeekClient` → `POST /v1/chat/completions`
+3. Write `.md` output
+
+API Key stored in Keychain; base URL / model in UserDefaults.
 
 ## Non–App Store
 

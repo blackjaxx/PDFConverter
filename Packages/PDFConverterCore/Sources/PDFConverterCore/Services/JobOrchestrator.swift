@@ -6,7 +6,7 @@ public typealias JobProgressHandler = @Sendable (UUID, Double, JobStatus) -> Voi
 public actor JobOrchestrator {
     public static let shared = JobOrchestrator()
 
-    private let registry: EngineRegistry
+    private var registry: EngineRegistry
     private let maxConcurrent: Int
     private var queue: [ConversionJob] = []
     private var running = 0
@@ -19,8 +19,15 @@ public actor JobOrchestrator {
         self.maxConcurrent = max(1, maxConcurrent)
     }
 
-    public func configure(toolsRoot: URL?, progressHandler: JobProgressHandler? = nil) {
+    public func configure(
+        toolsRoot: URL?,
+        registry: EngineRegistry? = nil,
+        progressHandler: JobProgressHandler? = nil
+    ) {
         self.toolsRoot = toolsRoot
+        if let registry {
+            self.registry = registry
+        }
         self.progressHandler = progressHandler
         ToolLocator.shared.configure(toolsRoot: toolsRoot)
     }

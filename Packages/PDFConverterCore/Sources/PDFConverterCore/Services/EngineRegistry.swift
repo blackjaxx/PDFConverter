@@ -15,7 +15,8 @@ public final class EngineRegistry: @unchecked Sendable {
             GhostscriptEngine(),
             LibreOfficeEngine(),
             TesseractEngine(),
-            WebKitEngine()
+            WebKitEngine(),
+            LLMEngine()
         ]
         self.engines = list
 

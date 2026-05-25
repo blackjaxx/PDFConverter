@@ -55,6 +55,16 @@ PDFConverter.app/Contents/Resources/tools/
 2. Archive → Export → 签名与公证（Notarization）
 3. 用 `create-dmg` 或 Disk Utility 制作 `.dmg`
 
+## DeepSeek AI（可选，需联网）
+
+在 **设置 → DeepSeek** 填写 [API Key](https://platform.deepseek.com/api_keys)，侧边栏 **AI** 分组提供：
+
+- **AI 摘要** — PDF 正文 → Markdown 摘要
+- **AI 翻译** — 提取正文后翻译（可选目标语言）
+- **AI → Markdown** — 结构化 Markdown 导出
+
+流程：本地 `pdftotext` 提取 → DeepSeek Chat API（OpenAI 兼容）→ 输出 `.md` 文件。不上传原始 PDF，仅发送提取的文本（可在参数中限制字符数）。
+
 ## 文档
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 模块与数据流

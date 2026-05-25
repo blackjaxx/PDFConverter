@@ -14,4 +14,9 @@ final class EngineRegistryTests: XCTestCase {
         let engine = registry.engine(for: .ocrSearchablePDF)
         XCTAssertEqual(engine?.kind, .tesseract)
     }
+
+    func testAIUsesDeepSeekEngine() {
+        let registry = EngineRegistry()
+        XCTAssertEqual(registry.engine(for: .pdfAISummary)?.kind, .deepSeek)
+    }
 }

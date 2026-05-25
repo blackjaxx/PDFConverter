@@ -11,28 +11,38 @@ final class AppViewModel: ObservableObject {
     @Published var parameters = ConversionParameters()
     @Published var jobs: [ConversionJob] = []
     @Published var toolReport: [(tool: BundledTool, available: Bool, path: String?)] = []
+    @Published var deepSeekAPIKeyInput: String = ""
+    @Published var deepSeekBaseURL: String = DeepSeekSettings.baseURL
+    @Published var deepSeekModel: String = DeepSeekSettings.model
+    @Published var isDeepSeekConfigured: Bool = DeepSeekSettings.isConfigured
 
     private let registry: EngineRegistry
     private var refreshTask: Task<Void, Never>?
 
     init(registry: EngineRegistry? = nil) {
-        self.registry = registry ?? EngineRegistry(engines: [
+        self.registry = registry ?? Self.makeDefaultRegistry()
+        Task { await bootstrap() }
+    }
+
+    static func makeDefaultRegistry() -> EngineRegistry {
+        EngineRegistry(engines: [
             PDFKitEngine(),
             PopplerEngine(),
             QpdfEngine(),
             GhostscriptEngine(),
             LibreOfficeEngine(),
             TesseractEngine(),
-            AppWebKitEngine()
+            AppWebKitEngine(),
+            AppLLMEngine()
         ])
-        Task { await bootstrap() }
     }
 
     func bootstrap() async {
         let toolsRoot = ToolsBootstrap.toolsRootURL()
-        await JobOrchestrator.shared.configure(toolsRoot: toolsRoot) { [weak self] _, _, _ in
+        await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry) { [weak self] _, _, _ in
             Task { @MainActor in self?.refreshJobs() }
         }
+        reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
         refreshJobs()
     }
@@ -99,5 +109,30 @@ final class AppViewModel: ObservableObject {
 
     func engineLabel(for type: ConversionType) -> String {
         registry.engine(for: type)?.kind.rawValue ?? "—"
+    }
+
+    var needsDeepSeekConfiguration: Bool {
+        selectedType.requiresNetwork && !isDeepSeekConfigured
+    }
+
+    func reloadDeepSeekSettings() {
+        deepSeekBaseURL = DeepSeekSettings.baseURL
+        deepSeekModel = DeepSeekSettings.model
+        isDeepSeekConfigured = DeepSeekSettings.isConfigured
+        deepSeekAPIKeyInput = ""
+    }
+
+    func saveDeepSeekSettings() {
+        DeepSeekSettings.baseURL = deepSeekBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        DeepSeekSettings.model = deepSeekModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !deepSeekAPIKeyInput.isEmpty {
+            try? DeepSeekSettings.saveAPIKey(deepSeekAPIKeyInput)
+        }
+        reloadDeepSeekSettings()
+    }
+
+    func clearDeepSeekAPIKey() {
+        try? DeepSeekSettings.clearAPIKey()
+        reloadDeepSeekSettings()
     }
 }

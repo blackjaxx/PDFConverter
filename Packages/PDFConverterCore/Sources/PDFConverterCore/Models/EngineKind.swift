@@ -9,6 +9,7 @@ public enum EngineKind: String, CaseIterable, Codable, Sendable {
     case libreOffice
     case tesseract
     case webKit
+    case deepSeek
 }
 
 public struct BundledTool: Sendable {

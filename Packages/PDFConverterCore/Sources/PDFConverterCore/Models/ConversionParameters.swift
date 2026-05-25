@@ -26,6 +26,12 @@ public struct ConversionParameters: Codable, Sendable {
     public var ocrLanguages: [String]
     public var compressionLevel: String
     public var watermarkText: String?
+    /// Target language for AI translate (e.g. 简体中文, English).
+    public var aiTargetLanguage: String
+    /// Max characters extracted from PDF before sending to LLM.
+    public var aiMaxInputChars: Int
+    /// Optional extra instruction appended to the AI prompt.
+    public var aiCustomInstruction: String?
 
     public init(
         dpi: Int = 150,
@@ -35,7 +41,10 @@ public struct ConversionParameters: Codable, Sendable {
         password: String? = nil,
         ocrLanguages: [String] = ["chi_sim", "eng"],
         compressionLevel: String = "ebook",
-        watermarkText: String? = nil
+        watermarkText: String? = nil,
+        aiTargetLanguage: String = "简体中文",
+        aiMaxInputChars: Int = 12_000,
+        aiCustomInstruction: String? = nil
     ) {
         self.dpi = dpi
         self.jpegQuality = jpegQuality
@@ -45,5 +54,8 @@ public struct ConversionParameters: Codable, Sendable {
         self.ocrLanguages = ocrLanguages
         self.compressionLevel = compressionLevel
         self.watermarkText = watermarkText
+        self.aiTargetLanguage = aiTargetLanguage
+        self.aiMaxInputChars = aiMaxInputChars
+        self.aiCustomInstruction = aiCustomInstruction
     }
 }

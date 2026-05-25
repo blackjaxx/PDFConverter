@@ -6,6 +6,32 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Link("获取 API Key", destination: URL(string: "https://platform.deepseek.com/api_keys")!)
+                TextField("API Base URL", text: $viewModel.deepSeekBaseURL)
+                TextField("模型", text: $viewModel.deepSeekModel)
+                    .help("默认 deepseek-chat")
+                SecureField(
+                    viewModel.isDeepSeekConfigured ? "API Key（已保存，输入新 Key 可覆盖）" : "API Key",
+                    text: $viewModel.deepSeekAPIKeyInput
+                )
+                HStack {
+                    Button("保存") { viewModel.saveDeepSeekSettings() }
+                    Button("清除 Key", role: .destructive) { viewModel.clearDeepSeekAPIKey() }
+                }
+                HStack {
+                    Image(systemName: viewModel.isDeepSeekConfigured ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(viewModel.isDeepSeekConfigured ? .green : .secondary)
+                    Text(viewModel.isDeepSeekConfigured ? "DeepSeek 已配置" : "未配置")
+                        .font(.caption)
+                }
+                Text("仅在你执行 AI 转换时联网；Key 保存在系统钥匙串。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("DeepSeek（云端 AI）")
+            }
+
             Section("离线工具链") {
                 Text("应用从 `Contents/Resources/tools` 加载 CLI，也可回退到系统 PATH（Homebrew 等）。")
                     .font(.caption)
@@ -38,6 +64,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 420)
+        .frame(width: 520, height: 520)
     }
 }

@@ -42,6 +42,7 @@ struct SidebarView: View {
         case .rotate, .watermark: return "编辑"
         case .encrypt, .decrypt: return "安全"
         case .ocr: return "OCR"
+        case .ai: return "AI (DeepSeek)"
         }
     }
 }

@@ -28,6 +28,8 @@ public enum ConversionError: Error, LocalizedError, Sendable {
     case invalidInput(String)
     case processFailed(command: String, exitCode: Int32, stderr: String)
     case outputMissing(String)
+    case aiNotConfigured(String)
+    case aiRequestFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -41,6 +43,10 @@ public enum ConversionError: Error, LocalizedError, Sendable {
             return "命令失败 (\(exitCode)): \(command)\n\(stderr)"
         case .outputMissing(let path):
             return "未生成输出文件: \(path)"
+        case .aiNotConfigured(let message):
+            return message
+        case .aiRequestFailed(let message):
+            return "AI 请求失败: \(message)"
         }
     }
 }

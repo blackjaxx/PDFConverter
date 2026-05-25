@@ -57,6 +57,26 @@ struct ConversionOptionsView: View {
                     Text("支持本地 HTML 文件")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                case .ai:
+                    Picker("翻译目标语言", selection: $viewModel.parameters.aiTargetLanguage) {
+                        Text("简体中文").tag("简体中文")
+                        Text("English").tag("English")
+                        Text("日本語").tag("日本語")
+                    }
+                    .disabled(viewModel.selectedType != .pdfAITranslate)
+                    Stepper(
+                        "提取字符上限: \(viewModel.parameters.aiMaxInputChars)",
+                        value: $viewModel.parameters.aiMaxInputChars,
+                        in: 2000...50000,
+                        step: 1000
+                    )
+                    TextField("附加指令（可选）", text: Binding(
+                        get: { viewModel.parameters.aiCustomInstruction ?? "" },
+                        set: { viewModel.parameters.aiCustomInstruction = $0.isEmpty ? nil : $0 }
+                    ))
+                    Text("需联网；正文经 pdftotext 提取后发送至 DeepSeek。请勿上传敏感文档。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
