@@ -74,8 +74,7 @@ public struct PopplerEngine: ConversionEngine {
             throw ConversionError.invalidInput("请选择 PDF")
         }
         let tool = try ToolLocator.shared.require(pdftotext)
-        let out = (context.job.outputDirectory ?? input.deletingLastPathComponent())
-            .appendingPathComponent(input.deletingPathExtension().lastPathComponent + ".txt")
+        let out = try context.makeOutputURL(suffix: "", extension: "txt")
 
         var args = [input.path, out.path]
         if let range = context.job.parameters.pageRange, let end = range.end {

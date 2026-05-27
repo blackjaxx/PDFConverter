@@ -1,7 +1,6 @@
 import Foundation
 
-/// Central registry: maps ConversionType → engine. Add engines here when extending.
-public final class EngineRegistry: @unchecked Sendable {
+public final class EngineRegistry: Sendable {
     public static let shared = EngineRegistry()
 
     private let engines: [any ConversionEngine]
@@ -14,9 +13,7 @@ public final class EngineRegistry: @unchecked Sendable {
             QpdfEngine(),
             GhostscriptEngine(),
             LibreOfficeEngine(),
-            TesseractEngine(),
-            WebKitEngine(),
-            LLMEngine()
+            TesseractEngine()
         ]
         self.engines = list
 

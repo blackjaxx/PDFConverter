@@ -39,7 +39,7 @@ public struct PDFKitEngine: ConversionEngine {
             pdf.insert(page, at: index)
         }
 
-        let out = try defaultOutputURL(context: context, extension: "pdf")
+        let out = try context.makeOutputURL(suffix: "_\(context.job.type.rawValue)", extension: "pdf")
         guard pdf.write(to: out) else {
             throw ConversionError.outputMissing(out.path)
         }
@@ -63,7 +63,7 @@ public struct PDFKitEngine: ConversionEngine {
             page.setBounds(bounds, for: .mediaBox)
         }
 
-        let out = try defaultOutputURL(context: context, extension: "pdf")
+        let out = try context.makeOutputURL(suffix: "_\(context.job.type.rawValue)", extension: "pdf")
         guard doc.write(to: out) else {
             throw ConversionError.outputMissing(out.path)
         }
@@ -90,7 +90,7 @@ public struct PDFKitEngine: ConversionEngine {
             }
         }
 
-        let out = try defaultOutputURL(context: context, extension: "pdf")
+        let out = try context.makeOutputURL(suffix: "_\(context.job.type.rawValue)", extension: "pdf")
         guard merged.write(to: out) else {
             throw ConversionError.outputMissing(out.path)
         }
@@ -124,23 +124,10 @@ public struct PDFKitEngine: ConversionEngine {
             page.addAnnotation(annotation)
         }
 
-        let out = try defaultOutputURL(context: context, extension: "pdf")
+        let out = try context.makeOutputURL(suffix: "_\(context.job.type.rawValue)", extension: "pdf")
         guard doc.write(to: out) else {
             throw ConversionError.outputMissing(out.path)
         }
         return ConversionResult(outputURLs: [out])
-    }
-
-    private func defaultOutputURL(context: ConversionContext, extension ext: String) throws -> URL {
-        let base = context.job.outputDirectory
-            ?? context.job.inputURLs.first?.deletingLastPathComponent()
-            ?? context.workDirectory
-        let stem = context.job.inputURLs.first?.deletingPathExtension().lastPathComponent ?? "output"
-        let name = "\(stem)_\(context.job.type.rawValue).\(ext)"
-        let url = base.appendingPathComponent(name)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
-        }
-        return url
     }
 }

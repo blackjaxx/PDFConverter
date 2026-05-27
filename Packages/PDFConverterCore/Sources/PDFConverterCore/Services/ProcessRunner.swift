@@ -22,9 +22,38 @@ public enum ProcessRunner {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            var stdoutData = Data()
+            var stderrData = Data()
+
+            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    stdoutData.append(data)
+                }
+            }
+
+            stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    stderrData.append(data)
+                }
+            }
+
             process.terminationHandler = { proc in
-                let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                stderrPipe.fileHandleForReading.readabilityHandler = nil
+
+                let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                if !remainingStdout.isEmpty {
+                    stdoutData.append(remainingStdout)
+                }
+                let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                if !remainingStderr.isEmpty {
+                    stderrData.append(remainingStderr)
+                }
+
+                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
                 continuation.resume(returning: (stdout, stderr, proc.terminationStatus))
             }
 

@@ -10,6 +10,21 @@ public struct ConversionContext: Sendable {
         self.workDirectory = workDirectory
         self.toolsRoot = toolsRoot
     }
+
+    /// 构造输出文件路径，优先使用 job.outputDirectory，回退到输入文件所在目录。
+    /// 如果该路径已存在文件则先删除。
+    public func makeOutputURL(suffix: String, extension ext: String) throws -> URL {
+        guard let input = job.inputURLs.first else {
+            throw ConversionError.invalidInput("没有输入文件")
+        }
+        let base = job.outputDirectory ?? input.deletingLastPathComponent()
+        let stem = input.deletingPathExtension().lastPathComponent
+        let url = base.appendingPathComponent(stem + suffix).appendingPathExtension(ext)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        return url
+    }
 }
 
 public struct ConversionResult: Sendable {

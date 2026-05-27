@@ -27,8 +27,7 @@ public struct QpdfEngine: ConversionEngine {
             throw ConversionError.invalidInput("请选择 PDF")
         }
         let tool = try ToolLocator.shared.require(qpdf)
-        let out = (context.job.outputDirectory ?? input.deletingLastPathComponent())
-            .appendingPathComponent(input.deletingPathExtension().lastPathComponent + "_split.pdf")
+        let out = try context.makeOutputURL(suffix: "_split", extension: "pdf")
 
         let args = ["--split-pages", input.path, out.path]
         _ = try await ProcessRunner.runChecked(executable: tool, arguments: args)
@@ -54,8 +53,7 @@ public struct QpdfEngine: ConversionEngine {
         }
         let tool = try ToolLocator.shared.require(qpdf)
         let suffix = decrypt ? "_decrypted" : "_encrypted"
-        let out = (context.job.outputDirectory ?? input.deletingLastPathComponent())
-            .appendingPathComponent(input.deletingPathExtension().lastPathComponent + suffix + ".pdf")
+        let out = try context.makeOutputURL(suffix: suffix, extension: "pdf")
 
         let args: [String]
         if decrypt {

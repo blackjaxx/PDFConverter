@@ -2,7 +2,6 @@ import Foundation
 import PDFConverterCore
 import WebKit
 
-/// Renders local HTML to PDF using WKWebView (must run on main actor).
 final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
     let kind: EngineKind = .webKit
 
@@ -16,8 +15,7 @@ final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
         }
         let html = try String(contentsOf: input, encoding: .utf8)
         let baseURL = input.deletingLastPathComponent()
-        let out = (context.job.outputDirectory ?? baseURL)
-            .appendingPathComponent(input.deletingPathExtension().lastPathComponent + ".pdf")
+        let out = try context.makeOutputURL(suffix: "", extension: "pdf")
 
         let pdfData: Data = try await MainActor.run {
             try renderPDF(html: html, baseURL: baseURL)
@@ -28,31 +26,27 @@ final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
     }
 
     @MainActor
-    private func renderPDF(html: String, baseURL: URL) throws -> Data {
-        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 1100))
-        let semaphore = DispatchSemaphore(value: 0)
-        var loadError: Error?
-        var pdfData: Data?
+    private func renderPDF(html: String, baseURL: URL) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 1100))
 
-        webView.navigationDelegate = SimpleNavigationDelegate { error in
-            loadError = error
-            semaphore.signal()
-        } onFinish: {
-            webView.createPDF(configuration: WKPDFConfiguration()) { result, error in
-                if let error { loadError = error }
-                else if let result { pdfData = result }
-                semaphore.signal()
-            }
+            webView.navigationDelegate = SimpleNavigationDelegate(
+                onError: { continuation.resume(throwing: $0) },
+                onFinish: {
+                    webView.createPDF(configuration: WKPDFConfiguration()) { result, error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else if let result {
+                            continuation.resume(returning: result)
+                        } else {
+                            continuation.resume(throwing: ConversionError.outputMissing("PDF from WebKit"))
+                        }
+                    }
+                }
+            )
+
+            webView.loadHTMLString(html, baseURL: baseURL)
         }
-
-        webView.loadHTMLString(html, baseURL: baseURL)
-        _ = semaphore.wait(timeout: .now() + 60)
-
-        if let loadError { throw loadError }
-        guard let pdfData else {
-            throw ConversionError.outputMissing("PDF from WebKit")
-        }
-        return pdfData
     }
 }
 

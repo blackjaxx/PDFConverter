@@ -18,8 +18,7 @@ public struct GhostscriptEngine: ConversionEngine {
         }
         let tool = try ToolLocator.shared.require(gs)
         let level = context.job.parameters.compressionLevel
-        let out = (context.job.outputDirectory ?? input.deletingLastPathComponent())
-            .appendingPathComponent(input.deletingPathExtension().lastPathComponent + "_compressed.pdf")
+        let out = try context.makeOutputURL(suffix: "_compressed", extension: "pdf")
 
         let args = [
             "-sDEVICE=pdfwrite",

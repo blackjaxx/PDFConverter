@@ -20,8 +20,7 @@ public struct TesseractEngine: ConversionEngine {
         let tool = try ToolLocator.shared.require(tesseract)
         let langs = context.job.parameters.ocrLanguages.joined(separator: "+")
         let outBase = context.workDirectory.appendingPathComponent("ocr_output")
-        let out = (context.job.outputDirectory ?? input.deletingLastPathComponent())
-            .appendingPathComponent(input.deletingPathExtension().lastPathComponent + "_ocr.pdf")
+        let out = try context.makeOutputURL(suffix: "_ocr", extension: "pdf")
 
         let args = [input.path, outBase.path, "-l", langs, "pdf"]
         _ = try await ProcessRunner.runChecked(executable: tool, arguments: args, currentDirectory: context.workDirectory)

@@ -15,13 +15,22 @@ final class AppViewModel: ObservableObject {
     @Published var deepSeekBaseURL: String = DeepSeekSettings.baseURL
     @Published var deepSeekModel: String = DeepSeekSettings.model
     @Published var isDeepSeekConfigured: Bool = DeepSeekSettings.isConfigured
+    @Published var errorMessage: String?
 
     private let registry: EngineRegistry
     private var refreshTask: Task<Void, Never>?
 
     init(registry: EngineRegistry? = nil) {
         self.registry = registry ?? Self.makeDefaultRegistry()
-        Task { await bootstrap() }
+        Task {
+            do {
+                await bootstrap()
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     static func makeDefaultRegistry() -> EngineRegistry {
@@ -40,11 +49,11 @@ final class AppViewModel: ObservableObject {
     func bootstrap() async {
         let toolsRoot = ToolsBootstrap.toolsRootURL()
         await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry) { [weak self] _, _, _ in
-            Task { @MainActor in self?.refreshJobs() }
+            Task { @MainActor in await self?.refreshJobs() }
         }
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
-        refreshJobs()
+        await refreshJobs()
     }
 
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
@@ -98,11 +107,6 @@ final class AppViewModel: ObservableObject {
         jobs = list
     }
 
-    private func refreshJobs() {
-        refreshTask?.cancel()
-        refreshTask = Task { await refreshJobs() }
-    }
-
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
@@ -126,13 +130,25 @@ final class AppViewModel: ObservableObject {
         DeepSeekSettings.baseURL = deepSeekBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         DeepSeekSettings.model = deepSeekModel.trimmingCharacters(in: .whitespacesAndNewlines)
         if !deepSeekAPIKeyInput.isEmpty {
-            try? DeepSeekSettings.saveAPIKey(deepSeekAPIKeyInput)
+            do {
+                try DeepSeekSettings.saveAPIKey(deepSeekAPIKeyInput)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
         reloadDeepSeekSettings()
     }
 
     func clearDeepSeekAPIKey() {
-        try? DeepSeekSettings.clearAPIKey()
+        do {
+            try DeepSeekSettings.clearAPIKey()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         reloadDeepSeekSettings()
+    }
+
+    func clearError() {
+        errorMessage = nil
     }
 }

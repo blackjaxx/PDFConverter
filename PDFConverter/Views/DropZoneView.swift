@@ -39,8 +39,11 @@ struct DropZoneView: View {
         let group = DispatchGroup()
         for provider in providers {
             group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                 defer { group.leave() }
+                if let error {
+                    return
+                }
                 if let url = item as? URL {
                     urls.append(url)
                 } else if let data = item as? Data,

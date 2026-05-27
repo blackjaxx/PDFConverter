@@ -1,44 +1,43 @@
 import Foundation
+import os
 
-/// Resolves bundled CLI binaries (non–App Store build: tools live in app Resources/tools).
 public final class ToolLocator: @unchecked Sendable {
     public static let shared = ToolLocator()
 
+    private let lock = OSAllocatedUnfairLock()
     private var toolsRoot: URL?
     private var cache: [String: URL] = [:]
-    private let lock = NSLock()
 
     private init() {}
 
     public func configure(toolsRoot: URL?) {
-        lock.lock()
-        defer { lock.unlock() }
-        self.toolsRoot = toolsRoot
-        cache.removeAll()
+        lock.withLock {
+            self.toolsRoot = toolsRoot
+            cache.removeAll()
+        }
     }
 
     public func path(for tool: BundledTool, allowSystemFallback: Bool = true) -> URL? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        if let cached = cache[tool.name] {
-            return cached
-        }
-
-        if let root = toolsRoot {
-            let bundled = root.appendingPathComponent(tool.relativePath)
-            if FileManager.default.isExecutableFile(atPath: bundled.path) {
-                cache[tool.name] = bundled
-                return bundled
+        lock.withLock {
+            if let cached = cache[tool.name] {
+                return cached
             }
-        }
 
-        if allowSystemFallback, let system = findOnPATH(tool.name) {
-            cache[tool.name] = system
-            return system
-        }
+            if let root = toolsRoot {
+                let bundled = root.appendingPathComponent(tool.relativePath)
+                if FileManager.default.isExecutableFile(atPath: bundled.path) {
+                    cache[tool.name] = bundled
+                    return bundled
+                }
+            }
 
-        return nil
+            if allowSystemFallback, let system = findOnPATH(tool.name) {
+                cache[tool.name] = system
+                return system
+            }
+
+            return nil
+        }
     }
 
     public func require(_ tool: BundledTool) throws -> URL {

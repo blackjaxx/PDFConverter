@@ -17,6 +17,26 @@ public enum ConversionCategory: String, CaseIterable, Codable, Sendable {
     case decrypt
     case ocr
     case ai
+
+    public var displayName: String {
+        switch self {
+        case .pdfToImage: return "PDF → 图片"
+        case .imageToPDF: return "图片 → PDF"
+        case .pdfToText: return "PDF → 文本"
+        case .officeToPDF: return "Office → PDF"
+        case .pdfToOffice: return "PDF → Office"
+        case .htmlToPDF: return "网页"
+        case .compress: return "优化"
+        case .merge: return "页面"
+        case .split: return "页面"
+        case .rotate: return "编辑"
+        case .watermark: return "编辑"
+        case .encrypt: return "安全"
+        case .decrypt: return "安全"
+        case .ocr: return "OCR"
+        case .ai: return "AI (DeepSeek)"
+        }
+    }
 }
 
 public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendable {

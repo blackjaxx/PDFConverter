@@ -8,12 +8,34 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView()
         } detail: {
-            HStack(spacing: 0) {
-                ConversionPanelView()
-                    .frame(minWidth: 380)
-                Divider()
-                JobQueueView()
-                    .frame(minWidth: 320)
+            VStack(spacing: 0) {
+                if let error = viewModel.errorMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.white)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Button {
+                            viewModel.clearError()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(10)
+                    .background(Color.red)
+                }
+
+                HStack(spacing: 0) {
+                    ConversionPanelView()
+                        .frame(minWidth: 380)
+                    Divider()
+                    JobQueueView()
+                        .frame(minWidth: 320)
+                }
             }
         }
         .navigationTitle("PDF Converter")

@@ -2,10 +2,18 @@ import XCTest
 @testable import PDFConverterCore
 
 final class EngineRegistryTests: XCTestCase {
-    func testEveryTypeHasEngine() {
+    func testLocalTypeHasEngine() {
         let registry = EngineRegistry()
-        for type in ConversionType.allCases {
+        for type in ConversionType.allCases where !type.requiresNetwork {
             XCTAssertNotNil(registry.engine(for: type), "Missing engine for \(type.rawValue)")
+        }
+    }
+
+    func testNetworkTypesReturnNilInCoreRegistry() {
+        let registry = EngineRegistry()
+        let networkTypes: [ConversionType] = [.htmlToPDF, .pdfAISummary, .pdfAITranslate, .pdfAIToMarkdown]
+        for type in networkTypes {
+            XCTAssertNil(registry.engine(for: type), "Network type \(type.rawValue) should not have engine in core registry")
         }
     }
 
@@ -15,8 +23,9 @@ final class EngineRegistryTests: XCTestCase {
         XCTAssertEqual(engine?.kind, .tesseract)
     }
 
-    func testAIUsesDeepSeekEngine() {
+    func testMergePDFUsesPDFKit() {
         let registry = EngineRegistry()
-        XCTAssertEqual(registry.engine(for: .pdfAISummary)?.kind, .deepSeek)
+        let engine = registry.engine(for: .mergePDF)
+        XCTAssertEqual(engine?.kind, .pdfKit)
     }
 }
