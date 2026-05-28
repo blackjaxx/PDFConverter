@@ -1,6 +1,13 @@
 import SwiftUI
 import PDFConverterCore
 
+/// 任务队列视图，显示所有转换任务的状态。
+///
+/// 有两种展示模式：
+/// 1. **空状态**（`jobs` 为空时）：显示托盘图标和引导文字
+/// 2. **任务列表**：每行显示一个 `JobRowView`
+///
+/// 右上角有刷新按钮（`arrow.clockwise` 图标），手动从 `JobOrchestrator` 拉取最新状态。
 struct JobQueueView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
@@ -41,6 +48,12 @@ struct JobQueueView: View {
     }
 }
 
+/// 单个任务行，显示任务的详细信息：
+/// - 转换类型名称（如 "PDF → PNG"）
+/// - 当前状态徽章（等待/进行中/完成/失败/已取消）
+/// - 进度条（仅在 `running` 时显示，0.0~1.0）
+/// - 错误信息（红色文字，最多 3 行）
+/// - 输出文件链接（点击可在 Finder 中定位）
 struct JobRowView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     let job: ConversionJob
@@ -73,6 +86,16 @@ struct JobRowView: View {
         .padding(.vertical, 4)
     }
 
+    /// 根据任务状态显示不同颜色和文字的徽章。
+    ///
+    /// 五个状态对应的视觉样式：
+    /// | 状态      | 文字   | 颜色      |
+    /// |-----------|--------|-----------|
+    /// | pending   | 等待   | 灰色      |
+    /// | running   | 进行中 | 蓝色      |
+    /// | completed | 完成   | 绿色      |
+    /// | failed    | 失败   | 红色      |
+    /// | cancelled | 已取消 | 橙色      |
     @ViewBuilder
     private var statusBadge: some View {
         let (text, color): (String, Color) = {
