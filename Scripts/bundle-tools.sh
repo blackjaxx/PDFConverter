@@ -22,7 +22,7 @@ fix_dylibs() {
   local subdir="$2"
 
   local deps
-  deps=$(otool -L "$target" | tail -n +2 | grep -oE '/[^ ]*/(opt/homebrew|usr/local)/[^ ]+' | head -n 20 || true)
+  deps=$(otool -L "$target" | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+|/usr/local/Cellar/[^ ]+' | head -n 20 || true)
 
   for lib_path in $deps; do
     local lib_name
