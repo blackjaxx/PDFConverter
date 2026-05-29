@@ -28,14 +28,18 @@ jobs:
 
       - name: Build app (Release)
         run: |
+          set -o pipefail
           xcodebuild build \
             -project PDFConverter.xcodeproj \
             -scheme PDFConverter \
             -configuration Release \
             -derivedDataPath build/derivedData \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tail -200
 
       - name: Extract .app from build products
         run: |
@@ -49,8 +53,7 @@ jobs:
 
           mkdir -p export
           cp -R "$APP_PATH" export/
-          echo ".app extracted:"
-          ls -lh export/
+          echo ".app extracted successfully"
 
       - name: Create DMG
         run: |
