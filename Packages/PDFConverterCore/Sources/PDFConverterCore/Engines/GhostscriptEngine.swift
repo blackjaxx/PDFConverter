@@ -28,6 +28,7 @@ import Foundation
 ///
 /// 因此，压缩后的 PDF 在视觉上与原始几乎相同，但文件大小可以缩小 50%~90%。
 public struct GhostscriptEngine: ConversionEngine {
+    public init() {}
     public let kind: EngineKind = .ghostscript
 
     private let gs = BundledTool(name: "gs", relativePath: "ghostscript/gs", engine: .ghostscript)

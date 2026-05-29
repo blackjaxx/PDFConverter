@@ -33,6 +33,7 @@ import Foundation
 /// - `-l chi_sim+eng`：OCR 语言组合
 /// - `pdf`：输出格式为可搜索 PDF
 public struct TesseractEngine: ConversionEngine {
+    public init() {}
     public let kind: EngineKind = .tesseract
 
     private let tesseract = BundledTool(name: "tesseract", relativePath: "tesseract/tesseract", engine: .tesseract)

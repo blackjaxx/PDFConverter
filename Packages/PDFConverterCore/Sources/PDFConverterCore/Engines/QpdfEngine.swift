@@ -12,6 +12,7 @@ import Foundation
 /// PDFKit 也可以做部分拆分操作（逐页复制），但 qpdf 直接操作 PDF 内部结构，
 /// 处理速度和文件大小都更优。加密功能 PDFKit 不支持，必须用 qpdf。
 public struct QpdfEngine: ConversionEngine {
+    public init() {}
     public let kind: EngineKind = .qpdf
 
     private let qpdf = BundledTool(name: "qpdf", relativePath: "qpdf/qpdf", engine: .qpdf)

@@ -14,6 +14,7 @@ import Foundation
 ///   `pdftoppm` 支持自定义 DPI 和页码范围，输出质量远高于截屏方案。
 /// - `pdftotext` 提取的文本保留了原始的排版顺序，适合后续的 AI 处理。
 public struct PopplerEngine: ConversionEngine {
+    public init() {}
     public let kind: EngineKind = .poppler
 
     /// pdftoppm 工具的 BundledTool 描述，用于 ``ToolLocator`` 查找

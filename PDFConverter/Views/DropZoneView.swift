@@ -58,7 +58,7 @@ struct DropZoneView: View {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                 defer { group.leave() }
-                if let error {
+                if error != nil {
                     return
                 }
                 if let url = item as? URL {

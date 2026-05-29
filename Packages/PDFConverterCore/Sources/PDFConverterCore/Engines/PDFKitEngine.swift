@@ -23,6 +23,7 @@ import AppKit
 ///
 /// 所以 PDFKit 和其他引擎是互补关系，各自处理不同类别的转换。
 public struct PDFKitEngine: ConversionEngine {
+    public init() {}
     public let kind: EngineKind = .pdfKit
 
     public func supportedTypes() -> Set<ConversionType> {

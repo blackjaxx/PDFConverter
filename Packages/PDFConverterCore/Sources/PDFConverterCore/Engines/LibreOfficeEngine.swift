@@ -24,6 +24,7 @@ import Foundation
 /// 设置 `HOME` 环境变量指向工作目录，是为了确保 LibreOffice 在 headless 模式下
 /// 找到正确的配置文件路径。这对于在沙盒环境中运行尤其重要。
 public struct LibreOfficeEngine: ConversionEngine {
+    public init() {}
     public let kind: EngineKind = .libreOffice
 
     private let soffice = BundledTool(name: "soffice", relativePath: "libreoffice/soffice", engine: .libreOffice)
