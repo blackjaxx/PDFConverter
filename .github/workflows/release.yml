@@ -15,31 +15,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
       - name: Install Homebrew dependencies
         run: |
-          brew install poppler qpdf ghostscript tesseract libreoffice
+          brew install poppler qpdf ghostscript tesseract libreoffice 2>&1 || true
+          brew install poppler qpdf ghostscript tesseract 2>&1
 
       - name: Bundle CLI tools
         run: |
           chmod +x Scripts/bundle-tools.sh
           ./Scripts/bundle-tools.sh
 
-      - name: Resolve Swift Package dependencies
-        run: |
-          cd Packages/PDFConverterCore
-          swift package resolve
-          cd ../..
-
-      - name: Build app (Release archive)
+      - name: Build Release archive
         run: |
           xcodebuild archive \
-            -project PDFConverter/PDFConverter.xcodeproj \
+            -project PDFConverter.xcodeproj \
             -scheme PDFConverter \
             -configuration Release \
             -archivePath build/PDFConverter.xcarchive \
@@ -61,11 +51,8 @@ jobs:
 
           mkdir -p "${STAGING_DIR}"
           cp -R "export/${APP_NAME}.app" "${STAGING_DIR}/"
-
-          # Create a symbolic link to /Applications for drag-and-drop convenience
           ln -s /Applications "${STAGING_DIR}/Applications"
 
-          # Create the DMG
           hdiutil create \
             -volname "${VOLUME_NAME}" \
             -srcfolder "${STAGING_DIR}" \
@@ -73,7 +60,6 @@ jobs:
             -format UDZO \
             "${DMG_NAME}"
 
-          # Add license agreement and prettify layout via AppleScript (optional)
           echo "DMG created: ${DMG_NAME}"
           ls -lh "${DMG_NAME}"
 
