@@ -95,6 +95,9 @@ public enum ConversionError: Error, LocalizedError, Sendable {
         case .unsupportedType(let type):
             return "不支持的转换类型: \(type.displayName)"
         case .missingTool(let name):
+            if name == "soffice" {
+                return "未找到 LibreOffice。Office 文档（Word/Excel/PPT）转换需要安装 LibreOffice。\n请从 https://www.libreoffice.org/download/ 下载安装。"
+            }
             return "未找到本地工具: \(name)。请运行 Scripts/bundle-tools.sh 或将工具放入 Resources/tools。"
         case .invalidInput(let message):
             return "输入无效: \(message)"

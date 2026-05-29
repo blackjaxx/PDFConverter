@@ -75,17 +75,35 @@ final class AppViewModel: ObservableObject {
         await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry)
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
+
+        // 如果 LibreOffice 不可用但当前选中的是 Office 转换类型，重置为默认类型
+        if !isLibreOfficeAvailable && (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice) {
+            selectedType = .pdfToPNG
+        }
+
         await refreshJobs()
     }
 
     /// 将转换类型按 `ConversionCategory` 分组，供侧边栏使用。
     /// 例如 `.pdfToImage` 分类下有 `.pdfToPNG`、`.pdfToJPEG` 等具体类型。
+    /// 如果 LibreOffice 未安装，则隐藏 `.officeToPDF` 和 `.pdfToOffice` 分类。
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
         let types = ConversionType.allCases
         return ConversionCategory.allCases.compactMap { cat in
+            if !isLibreOfficeAvailable {
+                if cat == .officeToPDF || cat == .pdfToOffice {
+                    return nil
+                }
+            }
             let items = types.filter { $0.category == cat }
             return items.isEmpty ? nil : (cat, items)
         }
+    }
+
+    /// 检查 LibreOffice（soffice）是否可用。
+    /// 由于 LibreOffice 依赖庞大，DMG 中不捆绑，需要用户自行安装。
+    var isLibreOfficeAvailable: Bool {
+        toolReport.first { $0.tool.name == "soffice" }?.available ?? false
     }
 
     /// 使用 `NSOpenPanel` 打开系统文件选择对话框。

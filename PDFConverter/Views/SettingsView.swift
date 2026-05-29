@@ -66,6 +66,17 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                if !viewModel.isLibreOfficeAvailable {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("LibreOffice 未安装")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text("Office 文档（Word/Excel/PPT）转换需要 LibreOffice\n请从 libreoffice.org/download 下载安装")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             // 分发信息：说明应用通过直接分发（非 Mac App Store）和沙盒已关闭，
