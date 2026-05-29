@@ -28,7 +28,7 @@ jobs:
 
       - name: Build app (Release)
         run: |
-          set -o pipefail
+          mkdir -p build
           xcodebuild build \
             -project PDFConverter.xcodeproj \
             -scheme PDFConverter \
@@ -39,44 +39,45 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -200
+            > build/build.log 2>&1 || {
+              echo "=== BUILD FAILED (last 150 lines) ==="
+              tail -150 build/build.log
+              exit 1
+            }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build/build.log
 
       - name: Extract .app from build products
+        if: success()
         run: |
           APP_PATH="build/derivedData/Build/Products/Release/PDFConverter.app"
           if [ ! -d "$APP_PATH" ]; then
             echo "ERROR: .app not found at $APP_PATH"
-            echo "Searching for .app..."
             find build/derivedData -name "*.app" -type d 2>/dev/null || true
             exit 1
           fi
-
           mkdir -p export
           cp -R "$APP_PATH" export/
-          echo ".app extracted successfully"
 
       - name: Create DMG
+        if: success()
         run: |
           APP_NAME="PDFConverter"
-          VOLUME_NAME="PDF Converter"
           DMG_NAME="${APP_NAME}-${GITHUB_REF_NAME}.dmg"
           STAGING_DIR="dmg_staging"
-
           mkdir -p "${STAGING_DIR}"
           cp -R "export/${APP_NAME}.app" "${STAGING_DIR}/"
           ln -s /Applications "${STAGING_DIR}/Applications"
-
-          hdiutil create \
-            -volname "${VOLUME_NAME}" \
-            -srcfolder "${STAGING_DIR}" \
-            -ov \
-            -format UDZO \
-            "${DMG_NAME}"
-
-          echo "DMG created: ${DMG_NAME}"
+          hdiutil create -volname "PDF Converter" -srcfolder "${STAGING_DIR}" -ov -format UDZO "${DMG_NAME}"
           ls -lh "${DMG_NAME}"
 
       - name: Upload DMG to Release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           files: "PDFConverter-*.dmg"
