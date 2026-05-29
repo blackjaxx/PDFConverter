@@ -46,6 +46,16 @@ public enum ProcessRunner {
             // 合并环境变量：基础是当前进程的环境，用户可以追加或覆盖
             var env = ProcessInfo.processInfo.environment
             environment.forEach { env[$0.key] = $0.value }
+
+            // 将工具所在目录加入动态库搜索路径，作为 install_name_tool 的兜底
+            let execDir = executable.deletingLastPathComponent().path
+            if let existing = env["DYLD_FALLBACK_LIBRARY_PATH"] {
+                env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(execDir):\(existing)"
+            } else {
+                let home = NSHomeDirectory()
+                env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(execDir):\(home)/lib:/usr/local/lib:/lib:/usr/lib"
+            }
+
             process.environment = env
             process.currentDirectoryURL = currentDirectory
 
