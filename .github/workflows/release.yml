@@ -1,0 +1,86 @@
+name: Build and Release DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew install poppler qpdf ghostscript tesseract libreoffice
+
+      - name: Bundle CLI tools
+        run: |
+          chmod +x Scripts/bundle-tools.sh
+          ./Scripts/bundle-tools.sh
+
+      - name: Resolve Swift Package dependencies
+        run: |
+          cd Packages/PDFConverterCore
+          swift package resolve
+          cd ../..
+
+      - name: Build app (Release archive)
+        run: |
+          xcodebuild archive \
+            -project PDFConverter/PDFConverter.xcodeproj \
+            -scheme PDFConverter \
+            -configuration Release \
+            -archivePath build/PDFConverter.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Export .app bundle
+        run: |
+          mkdir -p export
+          cp -R build/PDFConverter.xcarchive/Products/Applications/PDFConverter.app export/
+
+      - name: Create DMG
+        run: |
+          APP_NAME="PDFConverter"
+          VOLUME_NAME="PDF Converter"
+          DMG_NAME="${APP_NAME}-${GITHUB_REF_NAME}.dmg"
+          STAGING_DIR="dmg_staging"
+
+          mkdir -p "${STAGING_DIR}"
+          cp -R "export/${APP_NAME}.app" "${STAGING_DIR}/"
+
+          # Create a symbolic link to /Applications for drag-and-drop convenience
+          ln -s /Applications "${STAGING_DIR}/Applications"
+
+          # Create the DMG
+          hdiutil create \
+            -volname "${VOLUME_NAME}" \
+            -srcfolder "${STAGING_DIR}" \
+            -ov \
+            -format UDZO \
+            "${DMG_NAME}"
+
+          # Add license agreement and prettify layout via AppleScript (optional)
+          echo "DMG created: ${DMG_NAME}"
+          ls -lh "${DMG_NAME}"
+
+      - name: Upload DMG to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "PDFConverter-*.dmg"
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
