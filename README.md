@@ -21,8 +21,10 @@
 ### 本地构建
 
 ```bash
-# 1. 安装开发依赖（可选，用于本地调试）
-brew install poppler qpdf ghostscript tesseract libreoffice
+# 1. 安装开发依赖（LibreOffice 为可选，Office 文档转换需要）
+brew install poppler qpdf ghostscript tesseract
+# 可选：Office 文档转换（Word/Excel/PPT）
+brew install libreoffice
 
 # 2. 打开项目
 open PDFConverter.xcodeproj
@@ -42,8 +44,8 @@ cd Packages/PDFConverterCore && swift test
 | PDF → 图片 | PNG / JPEG / TIFF | Poppler（pdftoppm） |
 | 图片 → PDF | PNG / JPEG → PDF | PDFKit（系统原生） |
 | PDF → 文本 | 纯文本提取 | Poppler（pdftotext） |
-| Office → PDF | Word / Excel / PPT | LibreOffice（headless） |
-| PDF → Office | Word / Excel | LibreOffice（headless） |
+| Office → PDF | Word / Excel / PPT | LibreOffice（headless，需系统安装） |
+| PDF → Office | Word / Excel | LibreOffice（headless，需系统安装） |
 | HTML → PDF | 网页转 PDF | WebKit（WKWebView） |
 | 页面操作 | 合并 / 拆分 / 旋转 | PDFKit + qpdf |
 | 优化 | PDF 压缩 | Ghostscript |
@@ -180,4 +182,4 @@ git push origin v0.2.6
 
 本项目采用 [MIT License](LICENSE) 发布，供学习、研究与二次开发使用。
 
-捆绑的 Poppler、qpdf、Ghostscript、LibreOffice、Tesseract 等第三方工具请遵循其各自的开源协议。
+捆绑的 Poppler、qpdf、Ghostscript、Tesseract 等第三方工具请遵循其各自的开源协议。LibreOffice 不包含在 DMG 中，需要用户自行安装。

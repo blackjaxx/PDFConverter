@@ -56,13 +56,20 @@ public struct TesseractEngine: ConversionEngine {
         let outBase = context.workDirectory.appendingPathComponent("ocr_output")
         let out = try context.makeOutputURL(suffix: "_ocr", extension: "pdf")
 
+        // TESSDATA_PREFIX：告诉 Tesseract 去哪里找语言数据包
+        // 工具位于 Resources/tools/tesseract/tesseract
+        // tessdata 位于 Resources/tools/tesseract/tessdata/
+        // PREFIX 需要指向包含 tessdata 的父目录
+        let tessdataParent = tool.deletingLastPathComponent()
+        let env: [String: String] = ["TESSDATA_PREFIX": tessdataParent.path]
+
         // Tesseract 参数说明：
         // input.pdf              → 输入文件
         // ocr_output             → 输出基础名（Tesseract 自动加 .pdf 扩展名）
         // -l chi_sim+eng         → OCR 识别语言
         // pdf                    → 输出类型
         let args = [input.path, outBase.path, "-l", langs, "pdf"]
-        _ = try await ProcessRunner.runChecked(executable: tool, arguments: args, currentDirectory: context.workDirectory)
+        _ = try await ProcessRunner.runChecked(executable: tool, arguments: args, environment: env, currentDirectory: context.workDirectory)
 
         // Tesseract 生成的文件名为 `ocr_output.pdf`（会自动追加扩展名）
         let generated = outBase.appendingPathExtension("pdf")

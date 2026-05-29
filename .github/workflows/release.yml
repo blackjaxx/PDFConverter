@@ -64,6 +64,29 @@ jobs:
           mkdir -p export
           cp -R "$APP_PATH" export/
 
+      - name: Verify bundled tools
+        if: success()
+        run: |
+          TOOLS_DIR="export/PDFConverter.app/Contents/Resources/tools"
+          echo "--- Verifying bundled CLI tools ---"
+          for tool_path in \
+            "$TOOLS_DIR/poppler/pdftoppm" \
+            "$TOOLS_DIR/poppler/pdftotext" \
+            "$TOOLS_DIR/qpdf/qpdf" \
+            "$TOOLS_DIR/ghostscript/gs" \
+            "$TOOLS_DIR/tesseract/tesseract"; do
+            name=$(basename "$tool_path")
+            echo -n "  $name ... "
+            if "$tool_path" --version >/dev/null 2>&1 || "$tool_path" -version >/dev/null 2>&1 || "$tool_path" version >/dev/null 2>&1; then
+              echo "OK"
+            else
+              echo "FAILED (dyld issue?)"
+              otool -L "$tool_path" | grep -iE '(homebrew|not found)' || true
+              exit 1
+            fi
+          done
+          echo "All tools verified OK."
+
       - name: Create DMG
         if: success()
         run: |
