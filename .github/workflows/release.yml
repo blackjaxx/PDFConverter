@@ -26,21 +26,31 @@ jobs:
           chmod +x Scripts/bundle-tools.sh
           ./Scripts/bundle-tools.sh
 
-      - name: Build Release archive
+      - name: Build app (Release)
         run: |
-          xcodebuild archive \
+          xcodebuild build \
             -project PDFConverter.xcodeproj \
             -scheme PDFConverter \
             -configuration Release \
-            -archivePath build/PDFConverter.xcarchive \
+            -derivedDataPath build/derivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Export .app bundle
+      - name: Extract .app from build products
         run: |
+          APP_PATH="build/derivedData/Build/Products/Release/PDFConverter.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: .app not found at $APP_PATH"
+            echo "Searching for .app..."
+            find build/derivedData -name "*.app" -type d 2>/dev/null || true
+            exit 1
+          fi
+
           mkdir -p export
-          cp -R build/PDFConverter.xcarchive/Products/Applications/PDFConverter.app export/
+          cp -R "$APP_PATH" export/
+          echo ".app extracted:"
+          ls -lh export/
 
       - name: Create DMG
         run: |

@@ -8,7 +8,7 @@ VERSION="${VERSION:-snapshot}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${PROJECT_DIR}"
 
-ARCHIVE_PATH="build/${APP_NAME}.xcarchive"
+DERIVED_DATA="build/derivedData"
 EXPORT_DIR="build/export"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 STAGING_DIR="build/dmg_staging"
@@ -20,18 +20,25 @@ if [ -f Scripts/bundle-tools.sh ]; then
     bash Scripts/bundle-tools.sh
 fi
 
-echo "==> Building Release archive..."
-xcodebuild archive \
+echo "==> Building Release..."
+xcodebuild build \
     -project PDFConverter.xcodeproj \
     -scheme PDFConverter \
     -configuration Release \
-    -archivePath "${ARCHIVE_PATH}" \
+    -derivedDataPath "${DERIVED_DATA}" \
     CODE_SIGN_IDENTITY="" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO
 
-echo "==> Exporting .app bundle..."
-cp -R "${ARCHIVE_PATH}/Products/Applications/${APP_NAME}.app" "${EXPORT_DIR}/"
+APP_PATH="${DERIVED_DATA}/Build/Products/Release/${APP_NAME}.app"
+if [ ! -d "$APP_PATH" ]; then
+    echo "ERROR: .app not found at $APP_PATH"
+    find build/derivedData -name "*.app" -type d 2>/dev/null || true
+    exit 1
+fi
+
+echo "==> Extracting .app bundle..."
+cp -R "${APP_PATH}" "${EXPORT_DIR}/"
 
 echo "==> Preparing DMG staging directory..."
 cp -R "${EXPORT_DIR}/${APP_NAME}.app" "${STAGING_DIR}/"
