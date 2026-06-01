@@ -63,21 +63,26 @@ public enum ProcessRunner {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
-            var stdoutData = Data()
-            var stderrData = Data()
+            let stdoutData = NSMutableData()
+            let stderrData = NSMutableData()
+            let lock = NSLock()
 
             // readabilityHandler 在有数据到达时被系统调用，实时读取防止缓冲区满导致死锁
             stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
+                    lock.lock()
                     stdoutData.append(data)
+                    lock.unlock()
                 }
             }
 
             stderrPipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
+                    lock.lock()
                     stderrData.append(data)
+                    lock.unlock()
                 }
             }
 
@@ -88,16 +93,24 @@ public enum ProcessRunner {
 
                 // 读取 handler 关闭后管道中剩余的残留数据
                 let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                lock.lock()
                 if !remainingStdout.isEmpty {
                     stdoutData.append(remainingStdout)
                 }
+                lock.unlock()
+
                 let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                lock.lock()
                 if !remainingStderr.isEmpty {
                     stderrData.append(remainingStderr)
                 }
+                lock.unlock()
 
-                let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+                lock.lock()
+                let stdout = String(data: stdoutData as Data, encoding: .utf8) ?? ""
+                let stderr = String(data: stderrData as Data, encoding: .utf8) ?? ""
+                lock.unlock()
+
                 continuation.resume(returning: (stdout, stderr, proc.terminationStatus))
             }
 
