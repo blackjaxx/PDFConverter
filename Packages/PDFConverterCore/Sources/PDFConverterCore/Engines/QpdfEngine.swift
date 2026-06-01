@@ -16,6 +16,8 @@ public struct QpdfEngine: ConversionEngine {
 
     private let qpdf = BundledTool(name: "qpdf", relativePath: "qpdf/qpdf", engine: .qpdf)
 
+    public init() {}
+
     public func supportedTypes() -> Set<ConversionType> {
         [.splitPDF, .encryptPDF, .decryptPDF]
     }

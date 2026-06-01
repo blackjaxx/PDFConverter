@@ -21,6 +21,8 @@ public struct PopplerEngine: ConversionEngine {
     /// pdftotext 工具的 BundledTool 描述
     private let pdftotext = BundledTool(name: "pdftotext", relativePath: "poppler/pdftotext", engine: .poppler)
 
+    public init() {}
+
     public func supportedTypes() -> Set<ConversionType> {
         [.pdfToPNG, .pdfToJPEG, .pdfToTIFF, .pdfToText]
     }

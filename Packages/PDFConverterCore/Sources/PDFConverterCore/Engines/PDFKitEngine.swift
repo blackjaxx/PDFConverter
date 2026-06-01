@@ -25,6 +25,8 @@ import AppKit
 public struct PDFKitEngine: ConversionEngine {
     public let kind: EngineKind = .pdfKit
 
+    public init() {}
+
     public func supportedTypes() -> Set<ConversionType> {
         [.pngToPDF, .jpegToPDF, .rotatePDF, .mergePDF, .watermarkPDF]
     }

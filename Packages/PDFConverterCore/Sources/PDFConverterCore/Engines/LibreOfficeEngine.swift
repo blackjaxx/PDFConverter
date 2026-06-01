@@ -28,6 +28,8 @@ public struct LibreOfficeEngine: ConversionEngine {
 
     private let soffice = BundledTool(name: "soffice", relativePath: "libreoffice/soffice", engine: .libreOffice)
 
+    public init() {}
+
     public func supportedTypes() -> Set<ConversionType> {
         [.wordToPDF, .excelToPDF, .pptToPDF, .pdfToWord, .pdfToExcel]
     }

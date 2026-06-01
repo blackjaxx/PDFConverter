@@ -32,6 +32,8 @@ public struct GhostscriptEngine: ConversionEngine {
 
     private let gs = BundledTool(name: "gs", relativePath: "ghostscript/gs", engine: .ghostscript)
 
+    public init() {}
+
     public func supportedTypes() -> Set<ConversionType> {
         [.compressPDF]
     }

@@ -15,7 +15,7 @@ import Foundation
 /// 1. 创建实现了 ``ConversionEngine`` 的结构体
 /// 2. 在 `init` 的 `list` 默认值中加入该引擎实例
 /// 3. 注册中心会自动扫描 `supportedTypes()` 并更新映射表
-public final class EngineRegistry: Sendable {
+public final class EngineRegistry: @unchecked Sendable {
     /// 全局共享实例，使用默认的本地引擎列表
     public static let shared = EngineRegistry()
 

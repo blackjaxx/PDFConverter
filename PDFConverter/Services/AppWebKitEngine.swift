@@ -52,13 +52,12 @@ final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
             webView.navigationDelegate = SimpleNavigationDelegate(
                 onError: { continuation.resume(throwing: $0) },
                 onFinish: {
-                    webView.createPDF(configuration: WKPDFConfiguration()) { result, error in
-                        if let error {
+                    webView.createPDF(configuration: WKPDFConfiguration()) { result in
+                        switch result {
+                        case .success(let data):
+                            continuation.resume(returning: data)
+                        case .failure(let error):
                             continuation.resume(throwing: error)
-                        } else if let result {
-                            continuation.resume(returning: result)
-                        } else {
-                            continuation.resume(throwing: ConversionError.outputMissing("PDF from WebKit"))
                         }
                     }
                 }

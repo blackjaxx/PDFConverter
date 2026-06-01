@@ -37,6 +37,8 @@ public struct TesseractEngine: ConversionEngine {
 
     private let tesseract = BundledTool(name: "tesseract", relativePath: "tesseract/tesseract", engine: .tesseract)
 
+    public init() {}
+
     public func supportedTypes() -> Set<ConversionType> {
         [.ocrSearchablePDF]
     }
