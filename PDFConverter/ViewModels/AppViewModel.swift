@@ -78,9 +78,7 @@ final class AppViewModel: ObservableObject {
     /// 4. 从 JobOrchestrator 获取初始任务列表
     func bootstrap() async {
         let toolsRoot = ToolsBootstrap.toolsRootURL()
-        await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry) { [weak self] _, _, _ in
-            Task { @MainActor in await self?.refreshJobs() }
-        }
+        await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry)
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
         await refreshJobs()
