@@ -27,6 +27,14 @@ jobs:
 
       - name: Build app (Release)
         run: |
+          set -o pipefail
+          echo "=== Xcode version ==="
+          xcodebuild -version
+          echo "=== Swift version ==="
+          swift --version
+          echo "=== Available SDKs ==="
+          xcodebuild -showsdks
+          echo "=== Building ==="
           mkdir -p build
           xcodebuild build \
             -project PDFConverter.xcodeproj \
@@ -38,9 +46,8 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            > build/build.log 2>&1 || {
-              echo "=== BUILD FAILED (last 150 lines) ==="
-              tail -150 build/build.log
+            2>&1 | tee build/build.log | tail -80 || {
+              echo "=== BUILD FAILED ==="
               exit 1
             }
 
