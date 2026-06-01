@@ -30,9 +30,7 @@ final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
         let baseURL = input.deletingLastPathComponent()
         let out = try context.makeOutputURL(suffix: "", extension: "pdf")
 
-        let pdfData: Data = try await MainActor.run {
-            try renderPDF(html: html, baseURL: baseURL)
-        }
+        let pdfData = try await renderPDF(html: html, baseURL: baseURL)
 
         try pdfData.write(to: out)
         return ConversionResult(outputURLs: [out])
