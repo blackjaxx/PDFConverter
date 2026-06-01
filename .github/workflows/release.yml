@@ -15,69 +15,99 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
       - name: Install Homebrew dependencies
         run: |
-          brew install poppler qpdf ghostscript tesseract libreoffice
+          brew install poppler qpdf ghostscript tesseract 2>&1
 
       - name: Bundle CLI tools
         run: |
           chmod +x Scripts/bundle-tools.sh
           ./Scripts/bundle-tools.sh
 
-      - name: Resolve Swift Package dependencies
+      - name: Build app (Release)
         run: |
-          cd Packages/PDFConverterCore
-          swift package resolve
-          cd ../..
-
-      - name: Build app (Release archive)
-        run: |
-          xcodebuild archive \
-            -project PDFConverter/PDFConverter.xcodeproj \
+          mkdir -p build
+          xcodebuild build \
+            -project PDFConverter.xcodeproj \
             -scheme PDFConverter \
             -configuration Release \
-            -archivePath build/PDFConverter.xcarchive \
+            -derivedDataPath build/derivedData \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            > build/build.log 2>&1 || {
+              echo "=== BUILD FAILED (last 150 lines) ==="
+              tail -150 build/build.log
+              exit 1
+            }
 
-      - name: Export .app bundle
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build/build.log
+
+      - name: Extract .app from build products
+        if: success()
         run: |
+          APP_PATH="build/derivedData/Build/Products/Release/PDFConverter.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: .app not found at $APP_PATH"
+            find build/derivedData -name "*.app" -type d 2>/dev/null || true
+            exit 1
+          fi
           mkdir -p export
-          cp -R build/PDFConverter.xcarchive/Products/Applications/PDFConverter.app export/
+          cp -R "$APP_PATH" export/
+
+      - name: Verify bundled tools
+        if: success()
+        run: |
+          TOOLS_DIR="export/PDFConverter.app/Contents/Resources/tools"
+          echo "--- Verifying bundled CLI tools ---"
+          FAILED=0
+          for tool_path in \
+            "$TOOLS_DIR/poppler/pdftoppm" \
+            "$TOOLS_DIR/poppler/pdftotext" \
+            "$TOOLS_DIR/qpdf/qpdf" \
+            "$TOOLS_DIR/ghostscript/gs" \
+            "$TOOLS_DIR/tesseract/tesseract"; do
+            name=$(basename "$tool_path")
+            echo -n "  $name ... "
+            if "$tool_path" --version >/dev/null 2>&1 || "$tool_path" -version >/dev/null 2>&1 || "$tool_path" version >/dev/null 2>&1; then
+              echo "OK"
+            else
+              echo "WARN (dyld issue?)"
+              otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable)' || true
+              FAILED=1
+            fi
+          done
+          echo ""
+          if [ $FAILED -eq 1 ]; then
+            echo "=== One or more tools failed verification (non-fatal, DMG will still be built) ==="
+            echo "=== Tool tree files: ==="
+            find "$TOOLS_DIR" -type f | sort
+          else
+            echo "All tools verified OK."
+          fi
 
       - name: Create DMG
+        if: success()
         run: |
           APP_NAME="PDFConverter"
-          VOLUME_NAME="PDF Converter"
           DMG_NAME="${APP_NAME}-${GITHUB_REF_NAME}.dmg"
           STAGING_DIR="dmg_staging"
-
           mkdir -p "${STAGING_DIR}"
           cp -R "export/${APP_NAME}.app" "${STAGING_DIR}/"
-
-          # Create a symbolic link to /Applications for drag-and-drop convenience
           ln -s /Applications "${STAGING_DIR}/Applications"
-
-          # Create the DMG
-          hdiutil create \
-            -volname "${VOLUME_NAME}" \
-            -srcfolder "${STAGING_DIR}" \
-            -ov \
-            -format UDZO \
-            "${DMG_NAME}"
-
-          # Add license agreement and prettify layout via AppleScript (optional)
-          echo "DMG created: ${DMG_NAME}"
+          hdiutil create -volname "PDF Converter" -srcfolder "${STAGING_DIR}" -ov -format UDZO "${DMG_NAME}"
           ls -lh "${DMG_NAME}"
 
       - name: Upload DMG to Release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           files: "PDFConverter-*.dmg"
