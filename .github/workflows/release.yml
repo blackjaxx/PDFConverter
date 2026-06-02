@@ -88,7 +88,12 @@ jobs:
               echo "OK"
             else
               echo "WARN (dyld issue?)"
-              otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable)' || true
+              echo "--- stderr from tool: ---"
+              "$tool_path" --version 2>&1 || true
+              "$tool_path" -version 2>&1 || true
+              "$tool_path" version 2>&1 || true
+              echo "--- otool deps: ---"
+              otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable|@rpath)' || true
               FAILED=1
             fi
           done
