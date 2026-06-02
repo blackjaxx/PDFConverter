@@ -57,8 +57,9 @@ public struct TesseractEngine: ConversionEngine {
         let outBase = context.workDirectory.appendingPathComponent("ocr_output")
         let out = try context.makeOutputURL(suffix: "_ocr", extension: "pdf")
 
-        // Tesseract 需要 TESSDATA_PREFIX 环境变量来定位语言数据文件
-        let tessdataDir = tool.deletingLastPathComponent().appendingPathComponent("tessdata")
+        // TESSDATA_PREFIX 需要指向包含 tessdata 目录的父目录
+        // Tesseract 会在 $TESSDATA_PREFIX/tessdata/ 下查找语言数据文件
+        let tessdataDir = tool.deletingLastPathComponent()
         let env = ["TESSDATA_PREFIX": tessdataDir.path]
 
         // Tesseract 参数说明：
