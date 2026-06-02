@@ -30,7 +30,6 @@ fix_dylibs() {
 
     cp -f "$dep" "$dest_dir/$dep_name"
     chmod u+w "$dest_dir/$dep_name"
-    codesign --remove-signature "$dest_dir/$dep_name" 2>/dev/null || true
     install_name_tool -id "@executable_path/$dep_name" "$dest_dir/$dep_name"
 
     fix_dylibs "$dest_dir/$dep_name" "$dest_dir"
