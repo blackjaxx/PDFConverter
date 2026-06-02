@@ -20,6 +20,9 @@ fix_dylibs() {
     local dep_name
     dep_name="$(basename "$dep")"
 
+    # 先修改当前二进制的引用（即使 dylib 已被递归调用复制过，引用仍需修改）
+    install_name_tool -change "$dep" "@executable_path/$dep_name" "$binary"
+
     if [[ " ${already_copied[*]:-} " == *" $dep_name "* ]]; then
       continue
     fi
@@ -28,7 +31,6 @@ fix_dylibs() {
     cp -f "$dep" "$dest_dir/$dep_name"
     chmod u+w "$dest_dir/$dep_name"
     install_name_tool -id "@executable_path/$dep_name" "$dest_dir/$dep_name"
-    install_name_tool -change "$dep" "@executable_path/$dep_name" "$binary"
 
     fix_dylibs "$dest_dir/$dep_name" "$dest_dir"
   done < <(otool -L "$binary" 2>/dev/null | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+' | grep -v '\.app/' || true)

@@ -94,9 +94,10 @@ jobs:
           done
           echo ""
           if [ $FAILED -eq 1 ]; then
-            echo "=== One or more tools failed verification (non-fatal, DMG will still be built) ==="
+            echo "=== TOOLS FAILED — aborting build ==="
             echo "=== Tool tree files: ==="
             find "$TOOLS_DIR" -type f | sort
+            exit 1
           else
             echo "All tools verified OK."
           fi
