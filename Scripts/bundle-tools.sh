@@ -79,7 +79,6 @@ copy_bin() {
   mkdir -p "$DEST/$subdir"
   cp -f "$path" "$DEST/$subdir/$name"
   chmod u+w "$DEST/$subdir/$name"
-  codesign --remove-signature "$DEST/$subdir/$name" 2>/dev/null || true
 
   already_copied=()
   fix_dylibs "$DEST/$subdir/$name" "$DEST/$subdir" "$path"
