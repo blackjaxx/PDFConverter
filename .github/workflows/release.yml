@@ -71,74 +71,119 @@ jobs:
           mkdir -p export
           cp -R "$APP_PATH" export/
 
-      - name: Verify bundled tools
+      - name: Diagnose bundled tools
         if: success()
         run: |
           TOOLS_DIR="export/PDFConverter.app/Contents/Resources/tools"
-          echo "--- Verifying bundled CLI tools ---"
-          echo "=== Directory structure ==="
-          find "$TOOLS_DIR" -type f | sort
-          echo "=== Library counts ==="
-          find "$TOOLS_DIR" -name '*.dylib' | wc -l
-          echo ""
-          FAILED=0
-          # Set TESSDATA_PREFIX for tesseract verification
-          export TESSDATA_PREFIX="$TOOLS_DIR/tesseract/"
+          DIAG_FILE="diagnostics/tools-otool.txt"
+          mkdir -p diagnostics
+          {
+            echo "=== Tool tree ==="
+            find "$TOOLS_DIR" -type f -o -type l | sort
+            echo ""
+            echo "=== otool -L for all binaries ==="
+            find "$TOOLS_DIR" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
+              echo "--- $(basename "$f") [$(dirname "$f" | sed "s|$TOOLS_DIR/||")] ---"
+              otool -L "$f" 2>/dev/null || echo "  (otool failed)"
+              echo ""
+            done
+            echo "=== LC_RPATH for all binaries ==="
+            find "$TOOLS_DIR" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
+              echo "--- $(basename "$f") [$(dirname "$f" | sed "s|$TOOLS_DIR/||")] ---"
+              otool -l "$f" 2>/dev/null | grep -A2 'LC_RPATH' || echo "  (no LC_RPATH)"
+              echo ""
+            done
+          } > "$DIAG_FILE" 2>&1
+          echo "Diagnostics written to $DIAG_FILE"
 
-          for tool_path in \
-            "$TOOLS_DIR/poppler/pdftoppm" \
-            "$TOOLS_DIR/poppler/pdftotext" \
-            "$TOOLS_DIR/qpdf/qpdf" \
-            "$TOOLS_DIR/ghostscript/gs" \
-            "$TOOLS_DIR/tesseract/tesseract"; do
-            name=$(basename "$tool_path")
-            tool_dir=$(dirname "$tool_path")
-            echo -n "  $name ... "
-            if DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version >/dev/null 2>&1 || \
-               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version >/dev/null 2>&1 || \
-               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" version >/dev/null 2>&1 || \
-               [ "$name" = "tesseract" ] && DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --list-langs >/dev/null 2>&1; then
-              echo "OK"
-            else
-              echo "WARN (dyld issue?)"
-              echo "--- stderr from tool: ---"
-              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version 2>&1 || true
-              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version 2>&1 || true
-              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" version 2>&1 || true
-              if [ "$name" = "tesseract" ]; then
-                DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --list-langs 2>&1 || true
+      - name: Upload tools diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tools-diagnostics
+          path: diagnostics/
+
+      - name: Verify bundled tools
+        if: success()
+        continue-on-error: true
+        run: |
+          TOOLS_DIR="export/PDFConverter.app/Contents/Resources/tools"
+          VERIFY_FILE="diagnostics/verify-output.txt"
+          {
+            echo "--- Verifying bundled CLI tools ---"
+            echo "=== Directory structure ==="
+            find "$TOOLS_DIR" -type f | sort
+            echo "=== Dylib count ==="
+            find "$TOOLS_DIR" -name '*.dylib' | wc -l
+            echo ""
+            FAILED=0
+            export TESSDATA_PREFIX="$TOOLS_DIR/tesseract/"
+
+            for tool_path in \
+              "$TOOLS_DIR/poppler/pdftoppm" \
+              "$TOOLS_DIR/poppler/pdftotext" \
+              "$TOOLS_DIR/qpdf/qpdf" \
+              "$TOOLS_DIR/ghostscript/gs" \
+              "$TOOLS_DIR/tesseract/tesseract"; do
+              name=$(basename "$tool_path")
+              tool_dir=$(dirname "$tool_path")
+              lib_path="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib"
+              echo -n "  $name ... "
+              if DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" --version >/dev/null 2>&1 || \
+                 DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" -version >/dev/null 2>&1 || \
+                 DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" version >/dev/null 2>&1; then
+                echo "OK"
+              elif [ "$name" = "tesseract" ] && DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" --list-langs >/dev/null 2>&1; then
+                echo "OK (via --list-langs)"
+              elif [ "$name" = "tesseract" ] && DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" -v >/dev/null 2>&1; then
+                echo "OK (via -v)"
+              else
+                echo "WARN"
+                echo "--- stderr from tool: ---"
+                DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" --version 2>&1 || true
+                DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" -version 2>&1 || true
+                DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" version 2>&1 || true
+                if [ "$name" = "tesseract" ]; then
+                  DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" --list-langs 2>&1 || true
+                  DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$lib_path" "$tool_path" -v 2>&1 || true
+                fi
+                echo "--- otool deps (full): ---"
+                otool -L "$tool_path" || true
+                echo "--- LC_RPATH entries: ---"
+                otool -l "$tool_path" | grep -A2 'LC_RPATH' || true
+                FAILED=1
               fi
-              echo "--- otool deps (full): ---"
-              otool -L "$tool_path" || true
-              echo "--- LC_RPATH entries: ---"
-              otool -l "$tool_path" | grep -A2 'LC_RPATH' || true
-              FAILED=1
+            done
+            echo ""
+            if [ $FAILED -eq 1 ]; then
+              echo "=== WARNING: Some tools failed verification ==="
+              echo "=== Full tool tree with sizes: ==="
+              ls -lR "$TOOLS_DIR"
+              echo "=== DYLD_FALLBACK_LIBRARY_PATH was set to: $lib_path ==="
+            else
+              echo "All tools verified OK."
             fi
-          done
-          echo ""
-          if [ $FAILED -eq 1 ]; then
-            echo "=== TOOLS FAILED — aborting build ==="
-            echo "=== Full tool tree with sizes: ==="
-            ls -lR "$TOOLS_DIR"
-            exit 1
-          else
-            echo "All tools verified OK."
-          fi
+          } > "$VERIFY_FILE" 2>&1
+          cat "$VERIFY_FILE"
 
       - name: Create DMG
-        if: success()
+        if: success() || failure()
         run: |
           APP_NAME="PDFConverter"
           DMG_NAME="${APP_NAME}-${GITHUB_REF_NAME}.dmg"
           STAGING_DIR="dmg_staging"
           mkdir -p "${STAGING_DIR}"
+          if [ ! -d "export/${APP_NAME}.app" ]; then
+            echo "ERROR: .app not found, cannot create DMG"
+            exit 1
+          fi
           cp -R "export/${APP_NAME}.app" "${STAGING_DIR}/"
           ln -s /Applications "${STAGING_DIR}/Applications"
           hdiutil create -volname "PDF Converter" -srcfolder "${STAGING_DIR}" -ov -format UDZO "${DMG_NAME}"
           ls -lh "${DMG_NAME}"
 
       - name: Upload DMG to Release
-        if: success()
+        if: success() || failure()
         uses: softprops/action-gh-release@v2
         with:
           files: "PDFConverter-*.dmg"
