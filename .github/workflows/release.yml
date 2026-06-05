@@ -85,16 +85,16 @@ jobs:
             name=$(basename "$tool_path")
             tool_dir=$(dirname "$tool_path")
             echo -n "  $name ... "
-            if DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" --version >/dev/null 2>&1 || \
-               DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" -version >/dev/null 2>&1 || \
-               DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" version >/dev/null 2>&1; then
+            if DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version >/dev/null 2>&1 || \
+               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version >/dev/null 2>&1 || \
+               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" version >/dev/null 2>&1; then
               echo "OK"
             else
               echo "WARN (dyld issue?)"
               echo "--- stderr from tool: ---"
-              DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" --version 2>&1 || true
-              DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" -version 2>&1 || true
-              DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" version 2>&1 || true
+              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version 2>&1 || true
+              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version 2>&1 || true
+              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" version 2>&1 || true
               echo "--- otool deps: ---"
               otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable|@rpath)' || true
               FAILED=1

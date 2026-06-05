@@ -38,6 +38,14 @@ resolve_rpath() {
     return 0
   done
 
+  # 3) Last resort: 在整个 Homebrew prefix 中搜索
+  local found
+  found="$(find "$brew_prefix" -name "$dylib_name" -type f 2>/dev/null | head -1)"
+  if [[ -n "$found" ]]; then
+    echo "$found"
+    return 0
+  fi
+
   return 1
 }
 
@@ -92,6 +100,10 @@ copy_bin() {
 
   already_copied=()
   fix_dylibs "$DEST/$subdir/$name" "$DEST/$subdir" "$path"
+
+  # 安全网: 将工具目录加入 rpath，确保即使某些 @rpath 引用未被解析
+  # dyld 仍能在工具所在目录找到 dylib
+  install_name_tool -add_rpath "@executable_path" "$DEST/$subdir/$name" 2>/dev/null || true
 
   echo "✓ $name → $DEST/$subdir/$name"
 }
