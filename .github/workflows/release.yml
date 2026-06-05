@@ -22,8 +22,9 @@ jobs:
 
       - name: Bundle CLI tools
         run: |
-          chmod +x Scripts/bundle-tools.sh
-          ./Scripts/bundle-tools.sh
+          bash Scripts/bundle-tools.sh
+          echo "=== Bundled tools listing ==="
+          find Resources/tools -type f -o -type l | sort
 
       - name: Build app (Release)
         run: |
