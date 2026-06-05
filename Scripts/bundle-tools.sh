@@ -17,6 +17,7 @@ resolve_rpath() {
   local binary_dir
   binary_dir="$(dirname "$binary")"
 
+  # 1) 从 LC_RPATH 中查找
   while IFS= read -r rpath; do
     [[ -z "$rpath" ]] && continue
     rpath="${rpath//@loader_path/$binary_dir}"
@@ -27,6 +28,15 @@ resolve_rpath() {
       return 0
     fi
   done < <(otool -l "$binary" 2>/dev/null | grep -A2 'LC_RPATH' | grep 'path' | sed 's/.*path //' | sed 's/ (.*//')
+
+  # 2) Fallback: 搜索 Homebrew 常见路径
+  local brew_prefix
+  brew_prefix="$(brew --prefix 2>/dev/null || echo '/opt/homebrew')"
+  for fallback in "$brew_prefix/lib" "$brew_prefix/opt"/*/lib /usr/local/lib "$binary_dir"; do
+    [[ -f "$fallback/$dylib_name" ]] || continue
+    echo "$fallback/$dylib_name"
+    return 0
+  done
 
   return 1
 }

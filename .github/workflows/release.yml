@@ -83,15 +83,18 @@ jobs:
             "$TOOLS_DIR/ghostscript/gs" \
             "$TOOLS_DIR/tesseract/tesseract"; do
             name=$(basename "$tool_path")
+            tool_dir=$(dirname "$tool_path")
             echo -n "  $name ... "
-            if "$tool_path" --version >/dev/null 2>&1 || "$tool_path" -version >/dev/null 2>&1 || "$tool_path" version >/dev/null 2>&1; then
+            if DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" --version >/dev/null 2>&1 || \
+               DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" -version >/dev/null 2>&1 || \
+               DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" version >/dev/null 2>&1; then
               echo "OK"
             else
               echo "WARN (dyld issue?)"
               echo "--- stderr from tool: ---"
-              "$tool_path" --version 2>&1 || true
-              "$tool_path" -version 2>&1 || true
-              "$tool_path" version 2>&1 || true
+              DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" --version 2>&1 || true
+              DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" -version 2>&1 || true
+              DYLD_FALLBACK_LIBRARY_PATH="$tool_dir" "$tool_path" version 2>&1 || true
               echo "--- otool deps: ---"
               otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable|@rpath)' || true
               FAILED=1
