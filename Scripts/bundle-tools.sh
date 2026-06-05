@@ -117,6 +117,11 @@ fix_remaining() {
   echo ""
   echo "=== Post-processing: checking for remaining dylib references ==="
 
+  # Reset global dedup array so fix_dylibs won't incorrectly skip dylibs
+  # that were already copied by earlier copy_bin calls but may be needed
+  # in a different subdirectory.
+  already_copied=()
+
   local max_iterations=5
   local iteration=0
   local changed=1
@@ -176,7 +181,7 @@ fix_remaining() {
           fix_dylibs "$dest_dir/$dep_name" "$dest_dir" "$dep"
         fi
       done < <(otool -L "$binary" 2>/dev/null | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+|@rpath/[^ ]+' | grep -v '\.app/' || true)
-    done < <(find "$DEST" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null)
+    done < <(find "$DEST" -type f \( -perm /0111 -o -name '*.dylib' \) -print0 2>/dev/null)
   done
 
   echo ""
@@ -217,7 +222,7 @@ fix_remaining
 # Diagnostic output
 echo ""
 echo "=== Final bundled binaries with otool -L ==="
-find "$DEST" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
+find "$DEST" -type f \( -perm /0111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
   echo "--- $(basename "$f") [$(dirname "$f" | sed "s|$DEST/||")] ---"
   otool -L "$f" 2>/dev/null | grep -iE '(homebrew|@rpath|@executable_path|not found)' || echo "  (all deps resolved)"
 done || true
