@@ -8,6 +8,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/Resources/tools"
 mkdir -p "$DEST"
 
+BREW_PREFIX="$(brew --prefix 2>/dev/null || echo '/opt/homebrew')"
+
 already_copied=()
 
 resolve_rpath() {
@@ -17,7 +19,7 @@ resolve_rpath() {
   local binary_dir
   binary_dir="$(dirname "$binary")"
 
-  # 1) 从 LC_RPATH 中查找
+  # 1) Search LC_RPATH entries
   while IFS= read -r rpath; do
     [[ -z "$rpath" ]] && continue
     rpath="${rpath//@loader_path/$binary_dir}"
@@ -29,18 +31,16 @@ resolve_rpath() {
     fi
   done < <(otool -l "$binary" 2>/dev/null | grep -A2 'LC_RPATH' | grep 'path' | sed 's/.*path //' | sed 's/ (.*//')
 
-  # 2) Fallback: 搜索 Homebrew 常见路径
-  local brew_prefix
-  brew_prefix="$(brew --prefix 2>/dev/null || echo '/opt/homebrew')"
-  for fallback in "$brew_prefix/lib" "$brew_prefix/opt"/*/lib /usr/local/lib "$binary_dir"; do
+  # 2) Fallback: scan Homebrew lib and opt/*/lib
+  for fallback in "$BREW_PREFIX/lib" "$BREW_PREFIX/opt"/*/lib /usr/local/lib "$binary_dir"; do
     [[ -f "$fallback/$dylib_name" ]] || continue
     echo "$fallback/$dylib_name"
     return 0
   done
 
-  # 3) Last resort: 在整个 Homebrew prefix 中搜索
+  # 3) Last resort: find across the entire Homebrew prefix
   local found
-  found="$(find "$brew_prefix" -name "$dylib_name" -type f 2>/dev/null | head -1)"
+  found="$(find "$BREW_PREFIX" -name "$dylib_name" -type f 2>/dev/null | head -1)"
   if [[ -n "$found" ]]; then
     echo "$found"
     return 0
@@ -54,7 +54,6 @@ fix_dylibs() {
   local dest_dir="$2"
   local original_binary="${3:-$binary}"
 
-  # Recursively copy all Homebrew dylib dependencies (absolute + @rpath)
   while IFS= read -r dep; do
     [[ -z "$dep" ]] && continue
 
@@ -64,6 +63,7 @@ fix_dylibs() {
     if [[ "$dep" == @rpath/* ]]; then
       dep="$(resolve_rpath "$original_binary" "$dep")"
       if [[ -z "$dep" ]]; then
+        echo "   ⚠️  unresolved @rpath: $original_dep (from $binary)"
         continue
       fi
     fi
@@ -80,6 +80,9 @@ fix_dylibs() {
     cp -f "$dep" "$dest_dir/$dep_name"
     chmod u+w "$dest_dir/$dep_name"
     install_name_tool -id "@executable_path/$dep_name" "$dest_dir/$dep_name"
+    # Also add @executable_path to the dylib's own rpath so it can find
+    # other dylibs in the same directory
+    install_name_tool -add_rpath "@executable_path" "$dest_dir/$dep_name" 2>/dev/null || true
 
     fix_dylibs "$dest_dir/$dep_name" "$dest_dir" "$dep"
   done < <(otool -L "$binary" 2>/dev/null | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+|@rpath/[^ ]+' | grep -v '\.app/' || true)
@@ -101,14 +104,92 @@ copy_bin() {
   already_copied=()
   fix_dylibs "$DEST/$subdir/$name" "$DEST/$subdir" "$path"
 
-  # 安全网: 将工具目录加入 rpath，确保即使某些 @rpath 引用未被解析
-  # dyld 仍能在工具所在目录找到 dylib
   install_name_tool -add_rpath "@executable_path" "$DEST/$subdir/$name" 2>/dev/null || true
 
   echo "✓ $name → $DEST/$subdir/$name"
 }
 
+# ─────────────────────────────────────────────────────────────────────
+# Post-processing: scan all bundled binaries for any remaining
+# @rpath or Homebrew-absolute references and try to fix them.
+# ─────────────────────────────────────────────────────────────────────
+fix_remaining() {
+  echo ""
+  echo "=== Post-processing: checking for remaining dylib references ==="
+
+  local max_iterations=5
+  local iteration=0
+  local changed=1
+
+  while [[ $changed -eq 1 && $iteration -lt $max_iterations ]]; do
+    changed=0
+    iteration=$((iteration + 1))
+    echo "--- Pass $iteration ---"
+
+    while IFS= read -r -d '' binary; do
+      while IFS= read -r dep; do
+        [[ -z "$dep" ]] && continue
+        local original_dep="$dep"
+        local dep_name
+
+        if [[ "$dep" == @rpath/* ]]; then
+          # Resolve @rpath using the binary's OWN LC_RPATH (not the original)
+          dep="$(resolve_rpath "$binary" "$dep")"
+          if [[ -z "$dep" ]]; then
+            # Try to find by name in the dest tree or Homebrew
+            dep_name="${original_dep#@rpath/}"
+            local found_in_dest
+            found_in_dest="$(find "$DEST" -name "$dep_name" -type f 2>/dev/null | head -1)"
+            if [[ -n "$found_in_dest" ]]; then
+              echo "   fix leftover @rpath: $original_dep → found in dest"
+              install_name_tool -change "$original_dep" "@executable_path/$dep_name" "$binary"
+              changed=1
+            else
+              echo "   ⚠️  still unresolved @rpath: $original_dep in $(basename "$binary")"
+            fi
+            continue
+          fi
+        fi
+
+        dep_name="$(basename "$dep")"
+        local dest_dir
+        dest_dir="$(dirname "$binary")"
+
+        if [[ -f "$dest_dir/$dep_name" ]]; then
+          # Already in the same directory, just fix the reference
+          if [[ "$original_dep" != "@executable_path/$dep_name" ]]; then
+            echo "   fix leftover ref: $original_dep in $(basename "$binary")"
+            install_name_tool -change "$original_dep" "@executable_path/$dep_name" "$binary"
+            changed=1
+          fi
+        else
+          # Copy the missing dylib
+          echo "   fix missing dylib: $dep_name → $(basename "$(dirname "$binary")")/"
+          cp -f "$dep" "$dest_dir/$dep_name"
+          chmod u+w "$dest_dir/$dep_name"
+          install_name_tool -id "@executable_path/$dep_name" "$dest_dir/$dep_name"
+          install_name_tool -add_rpath "@executable_path" "$dest_dir/$dep_name" 2>/dev/null || true
+          install_name_tool -change "$original_dep" "@executable_path/$dep_name" "$binary"
+          changed=1
+
+          # Recurse into the newly copied dylib
+          fix_dylibs "$dest_dir/$dep_name" "$dest_dir" "$dep"
+        fi
+      done < <(otool -L "$binary" 2>/dev/null | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+|@rpath/[^ ]+' | grep -v '\.app/' || true)
+    done < <(find "$DEST" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null)
+  done
+
+  echo ""
+  echo "=== Post-processing complete ==="
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────
 echo "Bundling tools into $DEST"
+echo "Homebrew prefix: $BREW_PREFIX"
+echo ""
+
 copy_bin pdftoppm    poppler
 copy_bin pdftotext   poppler
 copy_bin qpdf        qpdf
@@ -116,15 +197,30 @@ copy_bin gs          ghostscript
 copy_bin tesseract   tesseract
 
 # LibreOffice is too large to bundle (hundreds of MB of dylibs).
-# Users must install it separately from https://www.libreoffice.org/download/
 if command -v soffice &>/dev/null; then
   echo "⚠️  skip soffice — LibreOffice is too large to bundle. Install it separately."
 fi
 
-if [[ -d "$(brew --prefix tesseract 2>/dev/null)/share/tessdata" ]]; then
+if [[ -d "$BREW_PREFIX/share/tessdata" ]]; then
+  mkdir -p "$DEST/tesseract/tessdata"
+  cp -R "$BREW_PREFIX/share/tessdata/"* "$DEST/tesseract/tessdata/" 2>/dev/null || true
+  echo "✓ tessdata copied"
+elif [[ -d "$(brew --prefix tesseract 2>/dev/null)/share/tessdata" ]]; then
   mkdir -p "$DEST/tesseract/tessdata"
   cp -R "$(brew --prefix tesseract)/share/tessdata/"* "$DEST/tesseract/tessdata/" 2>/dev/null || true
-  echo "✓ tessdata copied"
+  echo "✓ tessdata copied (from tesseract opt)"
 fi
 
+# Run post-processing fix pass
+fix_remaining
+
+# Diagnostic output
+echo ""
+echo "=== Final bundled binaries with otool -L ==="
+find "$DEST" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
+  echo "--- $(basename "$f") [$(dirname "$f" | sed "s|$DEST/||")] ---"
+  otool -L "$f" 2>/dev/null | grep -iE '(homebrew|@rpath|@executable_path|not found)' || echo "  (all deps resolved)"
+done || true
+
+echo ""
 echo "Done. Add Resources/tools to the Xcode app target (folder reference)."

@@ -76,7 +76,15 @@ jobs:
         run: |
           TOOLS_DIR="export/PDFConverter.app/Contents/Resources/tools"
           echo "--- Verifying bundled CLI tools ---"
+          echo "=== Directory structure ==="
+          find "$TOOLS_DIR" -type f | sort
+          echo "=== Library counts ==="
+          find "$TOOLS_DIR" -name '*.dylib' | wc -l
+          echo ""
           FAILED=0
+          # Set TESSDATA_PREFIX for tesseract verification
+          export TESSDATA_PREFIX="$TOOLS_DIR/tesseract/"
+
           for tool_path in \
             "$TOOLS_DIR/poppler/pdftoppm" \
             "$TOOLS_DIR/poppler/pdftotext" \
@@ -86,26 +94,32 @@ jobs:
             name=$(basename "$tool_path")
             tool_dir=$(dirname "$tool_path")
             echo -n "  $name ... "
-            if DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version >/dev/null 2>&1 || \
-               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version >/dev/null 2>&1 || \
-               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" version >/dev/null 2>&1; then
+            if DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version >/dev/null 2>&1 || \
+               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version >/dev/null 2>&1 || \
+               DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" version >/dev/null 2>&1 || \
+               [ "$name" = "tesseract" ] && DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --list-langs >/dev/null 2>&1; then
               echo "OK"
             else
               echo "WARN (dyld issue?)"
               echo "--- stderr from tool: ---"
-              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version 2>&1 || true
-              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version 2>&1 || true
-              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:/usr/local/lib:/lib:/usr/lib" "$tool_path" version 2>&1 || true
-              echo "--- otool deps: ---"
-              otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable|@rpath)' || true
+              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --version 2>&1 || true
+              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" -version 2>&1 || true
+              DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" version 2>&1 || true
+              if [ "$name" = "tesseract" ]; then
+                DYLD_LIBRARY_PATH="$tool_dir" DYLD_FALLBACK_LIBRARY_PATH="$tool_dir:$TOOLS_DIR/poppler:$TOOLS_DIR/qpdf:$TOOLS_DIR/ghostscript:$TOOLS_DIR/tesseract:/usr/local/lib:/lib:/usr/lib" "$tool_path" --list-langs 2>&1 || true
+              fi
+              echo "--- otool deps (full): ---"
+              otool -L "$tool_path" || true
+              echo "--- LC_RPATH entries: ---"
+              otool -l "$tool_path" | grep -A2 'LC_RPATH' || true
               FAILED=1
             fi
           done
           echo ""
           if [ $FAILED -eq 1 ]; then
             echo "=== TOOLS FAILED — aborting build ==="
-            echo "=== Tool tree files: ==="
-            find "$TOOLS_DIR" -type f | sort
+            echo "=== Full tool tree with sizes: ==="
+            ls -lR "$TOOLS_DIR"
             exit 1
           else
             echo "All tools verified OK."
