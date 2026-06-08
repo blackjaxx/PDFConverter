@@ -82,13 +82,13 @@ jobs:
             find "$TOOLS_DIR" -type f -o -type l | sort
             echo ""
             echo "=== otool -L for all binaries ==="
-            find "$TOOLS_DIR" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
+            find "$TOOLS_DIR" -type f \( -perm /0111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
               echo "--- $(basename "$f") [$(dirname "$f" | sed "s|$TOOLS_DIR/||")] ---"
               otool -L "$f" 2>/dev/null || echo "  (otool failed)"
               echo ""
             done
             echo "=== LC_RPATH for all binaries ==="
-            find "$TOOLS_DIR" -type f \( -perm +111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
+            find "$TOOLS_DIR" -type f \( -perm /0111 -o -name '*.dylib' \) -print0 2>/dev/null | while IFS= read -r -d '' f; do
               echo "--- $(basename "$f") [$(dirname "$f" | sed "s|$TOOLS_DIR/||")] ---"
               otool -l "$f" 2>/dev/null | grep -A2 'LC_RPATH' || echo "  (no LC_RPATH)"
               echo ""
@@ -183,7 +183,7 @@ jobs:
           ls -lh "${DMG_NAME}"
 
       - name: Upload DMG to Release
-        if: success() || failure()
+        if: always() && !cancelled()
         uses: softprops/action-gh-release@v2
         with:
           files: "PDFConverter-*.dmg"

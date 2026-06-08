@@ -146,7 +146,14 @@ fix_remaining() {
             local found_in_dest
             found_in_dest="$(find "$DEST" -name "$dep_name" -type f 2>/dev/null | head -1)"
             if [[ -n "$found_in_dest" ]]; then
-              echo "   fix leftover @rpath: $original_dep → found in dest"
+              local bin_dir
+              bin_dir="$(dirname "$binary")"
+              if [[ "$found_in_dest" != "$bin_dir/$dep_name" ]]; then
+                # Dylib found in a different directory — copy to current dir
+                echo "   fix leftover @rpath: $original_dep → copy from $found_in_dest"
+                cp -f "$found_in_dest" "$bin_dir/$dep_name"
+                chmod u+w "$bin_dir/$dep_name"
+              fi
               install_name_tool -change "$original_dep" "@executable_path/$dep_name" "$binary"
               changed=1
             else
@@ -178,6 +185,7 @@ fix_remaining() {
           changed=1
 
           # Recurse into the newly copied dylib
+          already_copied=()
           fix_dylibs "$dest_dir/$dep_name" "$dest_dir" "$dep"
         fi
       done < <(otool -L "$binary" 2>/dev/null | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+|@rpath/[^ ]+' | grep -v '\.app/' || true)
