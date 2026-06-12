@@ -24,7 +24,7 @@ echo "==> Resolving Swift Package dependencies..."
 
 echo "==> Building Release archive..."
 xcodebuild archive \
-    -project PDFConverter/PDFConverter.xcodeproj \
+    -project PDFConverter.xcodeproj \
     -scheme PDFConverter \
     -configuration Release \
     -archivePath "${ARCHIVE_PATH}" \

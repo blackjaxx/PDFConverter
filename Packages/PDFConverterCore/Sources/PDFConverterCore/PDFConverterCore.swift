@@ -12,5 +12,5 @@
 /// 版本号通过静态属性 `version` 对外暴露，遵循语义化版本规范。
 public enum PDFConverterCore {
     /// Package 的语义化版本号，遵循 `主版本.次版本.修订号` 格式。
-    public static let version = "0.1.0"
+    public static let version = "0.3.21"
 }

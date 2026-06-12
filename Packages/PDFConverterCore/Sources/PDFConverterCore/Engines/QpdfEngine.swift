@@ -54,9 +54,11 @@ public struct QpdfEngine: ConversionEngine {
         // qpdf --split-pages 生成的文件以输出文件名为前缀
         // 例如 output_split.pdf → output_split-1.pdf, output_split-2.pdf
         let dir = out.deletingLastPathComponent()
-        let stem = input.deletingPathExtension().lastPathComponent
+        // 使用输出文件 stem 匹配 qpdf --split-pages 生成的文件
+        // qpdf 生成的文件命名格式：{outputStem}-1.pdf, {outputStem}-2.pdf ...
+        let outStem = out.deletingPathExtension().lastPathComponent
         let outputs = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix(stem) && $0.pathExtension == "pdf" }
+            .filter { $0.lastPathComponent.hasPrefix(outStem) && $0.pathExtension == "pdf" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         guard !outputs.isEmpty else {
