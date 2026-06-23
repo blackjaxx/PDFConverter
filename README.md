@@ -6,6 +6,8 @@
 
 这是一个面向**学习与二次开发**的开源项目，设计清晰、注释详细，适合 Swift/SwiftUI 初学者阅读和理解 macOS 应用的完整架构。
 
+> **实验项目声明**：本项目是一个实验，旨在检验 AI 能否协助开发可投入实际使用的产品。欢迎通过 [Issues](https://github.com/blackjaxx/PDFConverter/issues) 反馈问题或提出建议。
+
 ## 下载与安装
 
 ### 从 GitHub Releases 下载（推荐）
