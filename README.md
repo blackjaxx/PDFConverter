@@ -54,6 +54,18 @@ cd Packages/PDFConverterCore && swift test
 | OCR | 可搜索 PDF | Tesseract |
 | AI | 摘要 / 翻译 / Markdown | DeepSeek Chat API |
 
+## 部署说明
+
+### Docker / 容器化部署说明
+
+本项目目前为 **macOS 原生 GUI 应用**，基于 SwiftUI 及系统框架（PDFKit、AppKit）构建，因此 **暂不提供官方 Docker 容器化部署方案**。主要原因如下：
+
+- 运行依赖 macOS 系统能力与图形界面环境，无法直接运行于通用 Linux 容器中；
+- 转换依赖多项系统级工具（LibreOffice、Poppler、qpdf、Ghostscript、Tesseract），当前通过主机本地安装提供，而非内置于应用内部；
+- 目前未提供 headless / CLI / Server 运行模式，无可供远程调用的 HTTP API 服务入口。
+
+如有服务化部署需求，后续版本可考虑增加独立的 **Server / CLI 模式**（例如 FastAPI + 后台命令调用），届时将补充 Dockerfile 与部署文档。在此之前，建议仍在 macOS 本地构建运行。
+
 ## 项目架构
 
 ```
