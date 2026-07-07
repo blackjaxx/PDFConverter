@@ -31,14 +31,12 @@ public struct LibreOfficeEngine: ConversionEngine {
 
     public func supportedTypes() -> Set<ConversionType> {
         [.wordToPDF, .excelToPDF, .pptToPDF, .pdfToWord, .pdfToExcel]
-    }
-
     public func convert(context: ConversionContext) async throws -> ConversionResult {
         guard let input = context.job.inputURLs.first else {
             throw ConversionError.invalidInput("请选择 Office 文件")
         }
         let tool = try ToolLocator.shared.require(soffice)
-        let outDir = context.job.outputDirectory ?? input.deletingLastPathComponent()
+        let outDirInput = context.job.outputDirectory ?? input.deletingLastPathComponent()
 
         // 根据转换类型决定目标格式（LibreOffice 的 --convert-to 参数）
         let filter: String
@@ -57,6 +55,12 @@ public struct LibreOfficeEngine: ConversionEngine {
         let profileDir = context.workDirectory.appendingPathComponent("lo_profile", isDirectory: true)
         try FileManager.default.createDirectory(at: profileDir, withIntermediateDirectories: true)
 
+        // 使用单独的干净输出子目录，避免和 outDir 中既有文件混淆。
+        // LibreOffice 的 --convert-to 没有提供精确输出文件名控制，
+        // 用隔离目录后可直接按扩展名扫描，无需依赖修改时间。
+        let isolatedOutDir = context.workDirectory.appendingPathComponent("lo_output", isDirectory: true)
+        try FileManager.default.createDirectory(at: isolatedOutDir, withIntermediateDirectories: true)
+
         // LibreOffice headless 参数说明：
         // --headless                     → 不启动 GUI
         // -env:UserInstallation=file:// → 指定独立的用户配置目录
@@ -65,8 +69,10 @@ public struct LibreOfficeEngine: ConversionEngine {
         let args = [
             "--headless",
             "-env:UserInstallation=file://\(profileDir.path)",
-            "--convert-to", filter,
-            "--outdir", outDir.path,
+            "--convert-to",
+            filter,
+            "--outdir",
+            isolatedOutDir.path,
             input.path
         ]
 
@@ -77,26 +83,26 @@ public struct LibreOfficeEngine: ConversionEngine {
         )
 
         let expectedExt = filter == "pdf" ? "pdf" : filter
-        let expectedName = input.deletingPathExtension().lastPathComponent + ".\(expectedExt)"
-        let out = outDir.appendingPathComponent(expectedName)
-
-        guard FileManager.default.fileExists(atPath: out.path) else {
-            // 有时候输出文件名与预期不一致，此时按修改时间取最新的同扩展名文件
-            let generated = try FileManager.default.contentsOfDirectory(
-                at: outDir,
-                includingPropertiesForKeys: [.contentModificationDateKey]
-            )
+        let expectedStem = input.deletingPathExtension().lastPathComponent
+        let outputs = try FileManager.default.contentsOfDirectory(at: isolatedOutDir, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == expectedExt }
-            .sorted { a, b in
-                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return da > db
-            }
-            guard let latest = generated.first else {
-                throw ConversionError.outputMissing(expectedName)
-            }
-            return ConversionResult(outputURLs: [latest])
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        guard !outputs.isEmpty else {
+            throw ConversionError.outputMissing("\(expectedStem).\(expectedExt)")
         }
-        return ConversionResult(outputURLs: [out])
+
+        let finalOutDir = outDirInput
+        var finalURLs: [URL] = []
+        for generated in outputs {
+            let dest = finalOutDir.appendingPathComponent(generated.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.moveItem(at: generated, to: dest)
+            finalURLs.append(dest)
+        }
+
+        return ConversionResult(outputURLs: finalURLs)
     }
 }
