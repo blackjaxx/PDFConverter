@@ -14,7 +14,10 @@
 
 1. 双击打开 `.dmg` 文件
 2. 将 `PDFConverter.app` 拖入 `Applications` 文件夹
-3. 首次运行时，右键点击应用 → 选择「打开」（macOS Gatekeeper 限制）
+3. 打开终端，执行 `xattr -cr /Applications/PDFConverter.app`
+4. 右键点击应用 → 选择「打开」
+
+> 由于当前 Release 包**未经过 Apple 代码签名与公证**，直接打开会触发 Gatekeeper 拦截。执行上方命令可清除隔离标记后正常运行。
 
 >  每次推送 `v*` 标签（如 `v0.2.6`）时，GitHub Actions 会自动构建并上传 DMG 包。
 
