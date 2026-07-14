@@ -10,6 +10,11 @@ import PDFConverterCore
 /// - "编辑" 分组下有压缩、旋转、水印、加密/解密
 ///
 /// 使用 `.listStyle(.sidebar)` 获得 macOS 原生侧边栏外观。
+///
+/// ## 后端可用性徽章
+/// 当某个分类的所有后端都不可用时（例如没有任何 Office 软件安装），
+/// 该分类下的每个条目都会显示「需安装」红色徽章，让用户知道功能存在
+/// 但需要安装额外软件才能使用。
 struct SidebarView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
@@ -31,6 +36,16 @@ struct SidebarView: View {
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(Capsule().fill(Color.orange.opacity(0.2)))
+                                    .foregroundStyle(.orange)
+                            }
+                            // 后端不可用时显示"需安装"红色徽章
+                            else if !viewModel.isBackendAvailable(for: type) {
+                                Text("需安装")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.red.opacity(0.15)))
+                                    .foregroundStyle(.red)
                             }
                         }
                         .tag(type)
