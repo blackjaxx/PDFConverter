@@ -151,10 +151,15 @@ public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendabl
     /// 用于控制功能的逐步发布——已实现并测试通过的类型设为 `true`，
     /// 尚未完成或需要后续版本支持的类型设为 `false`。
     /// UI 层根据这个属性决定是否显示该功能入口或将其置灰。
+    ///
+    /// 修复：`.pdfToWord` 和 `.pdfToExcel` 已实现（OfficeAutomationEngine +
+    /// LibreOffice 回退），之前未加入列表是历史遗漏。现在补全，
+    /// 否则这两个类型会被 SidebarView 标记为「预览」并禁用。
     public var isAvailableInMVP: Bool {
         switch self {
         case .pdfToPNG, .pdfToJPEG, .pngToPDF, .jpegToPDF, .mergePDF, .splitPDF, .rotatePDF,
              .pdfToText, .compressPDF, .wordToPDF, .excelToPDF, .pptToPDF, .ocrSearchablePDF,
+             .pdfToWord, .pdfToExcel,
              .pdfAISummary, .pdfAITranslate, .pdfAIToMarkdown:
             return true
         default:
