@@ -1,13 +1,7 @@
 import SwiftUI
 import PDFConverterCore
 
-/// 任务队列视图，显示所有转换任务的状态。
-///
-/// 有两种展示模式：
-/// 1. **空状态**（`jobs` 为空时）：显示托盘图标和引导文字
-/// 2. **任务列表**：每行显示一个 `JobRowView`
-///
-/// 右上角有刷新按钮（`arrow.clockwise` 图标），手动从 `JobOrchestrator` 拉取最新状态。
+/// 任务队列视图。
 struct JobQueueView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
@@ -49,19 +43,17 @@ struct JobQueueView: View {
     }
 }
 
-/// 单个任务行，显示任务的详细信息：
-/// - 转换类型名称（如 "PDF → PNG"）
-/// - 当前状态徽章（等待/进行中/完成/失败/已取消）
-/// - 进度条（running 和 completed 都显示，completed 显示 100%）
-/// - 错误信息（红色文字，最多 3 行）
-/// - 输出文件链接（点击可在 Finder 中定位）
+/// 单个任务行。
 ///
-/// v0.4.2 修复：
-/// - ProgressView 在 running 和 completed 都显示
-/// - 完成时显示淡绿色并显示 100% 进度
+/// v0.4.3 升级：
+/// - 失败任务可点击展开查看完整错误（不再限制 3 行）
+/// - 状态徽章和进度条颜色区分更清晰
+/// - 添加「在 Finder 中显示」快捷按钮
 struct JobRowView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     let job: ConversionJob
+    @State private var isExpanded: Bool = false
+    @ObservedObject private var errorCenter = ErrorCenter.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -71,33 +63,86 @@ struct JobRowView: View {
                 Spacer()
                 statusBadge
             }
-            // 修复（v0.4.2）：running 和 completed 都显示进度条
-            // - running: 进度随任务实时更新
-            // - completed: 显示 100% 作为视觉确认
-            // - failed: 显示红色 + 错误信息
+
             if job.status == .running || job.status == .completed {
                 ProgressView(value: job.progress)
                     .progressViewStyle(.linear)
                     .tint(progressColor)
             }
-            if let error = job.errorMessage, job.status == .failed {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(3)
+
+            if job.status == .failed, let error = job.errorMessage {
+                // v0.4.3：可点击展开错误详情
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(isExpanded ? nil : 2)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if isExpanded {
+                    HStack {
+                        Button {
+                            // v0.4.3：使用 stderrDetails（完整信息）而非 errorMessage（短描述）
+                            let details = job.stderrDetails ?? job.errorMessage ?? "未知错误"
+                            errorCenter.showDetail(AppError(
+                                severity: .error,
+                                title: "\(job.type.displayName) 失败详情",
+                                message: job.errorMessage ?? "未知错误",
+                                details: details
+                            ))
+                        } label: {
+                            Label("查看完整错误", systemImage: "info.circle")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button {
+                            // 重试：重新创建一个同类型的 job
+                            viewModel.retryJob(job)
+                        } label: {
+                            Label("重试", systemImage: "arrow.clockwise")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(.leading, 18)
+                }
             }
+
             if !job.outputURLs.isEmpty {
                 ForEach(job.outputURLs, id: \.path) { url in
-                    Button(url.lastPathComponent) { viewModel.revealInFinder(url) }
-                        .buttonStyle(.link)
-                        .font(.caption)
+                    HStack {
+                        Button(url.lastPathComponent) { viewModel.revealInFinder(url) }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    }
                 }
             }
         }
         .padding(.vertical, 4)
     }
 
-    /// 进度条颜色：完成时绿色，运行时蓝色
     private var progressColor: Color {
         switch job.status {
         case .completed: return .green
@@ -106,7 +151,6 @@ struct JobRowView: View {
         }
     }
 
-    /// 根据任务状态显示不同颜色和文字的徽章。
     @ViewBuilder
     private var statusBadge: some View {
         let (text, color): (String, Color) = {
