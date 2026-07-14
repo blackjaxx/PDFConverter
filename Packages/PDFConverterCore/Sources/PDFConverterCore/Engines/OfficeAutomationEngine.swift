@@ -80,7 +80,6 @@ public struct OfficeAutomationEngine: ConversionEngine {
     /// - 根据文件类型选择 Word/Excel/PPT
     /// - 用 `NSWorkspace` 检查应用是否已安装（通过 Bundle ID）
     /// - AppleScript 内用 `try...on error` 处理运行时错误
-    /// - 超时控制：`osascript` 进程最多等待 60 秒
     /// - Returns: 成功则返回 `ConversionResult`，失败返回 `nil`
     private func tryMicrosoftOffice(
         input: URL,
@@ -111,11 +110,12 @@ public struct OfficeAutomationEngine: ConversionEngine {
 
         // AppleScript: 打开文件 → 导出为 PDF → 关闭（不保存原文件）
         // 外层 try 捕获脚本级异常（如应用版本不兼容、文件打不开等）
+        // 路径用 quoted form of POSIX file 安全转义（处理空格、引号、特殊字符）
         let script = """
         try
             tell application "\(appName)"
-                set doc to open POSIX file "\(input.path)"
-                save as doc filename "\(outputPath)" file format \(saveFormat)
+                set doc to open (quoted form of POSIX file "\(appleScriptEscape(input.path))")
+                save as doc filename "\(appleScriptEscape(outputPath))" file format \(saveFormat)
                 close doc saving no
             end tell
             return "OK"
@@ -181,8 +181,8 @@ public struct OfficeAutomationEngine: ConversionEngine {
         let script = """
         try
             tell application "\(appName)"
-                set doc to open POSIX file "\(input.path)"
-                \(exportVerb): file "\(outputPath)"
+                set doc to open (quoted form of POSIX file "\(appleScriptEscape(input.path))")
+                \(exportVerb): file "\(appleScriptEscape(outputPath))"
                 close doc saving no
             end tell
             return "OK"
@@ -207,5 +207,32 @@ public struct OfficeAutomationEngine: ConversionEngine {
 
         return ConversionResult(outputURLs: [outputURL],
                                 logs: "[OfficeAutomation] \(appName) 导出成功")
+    }
+
+    /// 转义 AppleScript 字符串字面量中的特殊字符。
+    ///
+    /// AppleScript 字符串字面量支持以下转义：
+    /// - `"` → `\"`
+    /// - `\` → `\\`
+    /// - 换行 → `\n`
+    /// - 回车 → `\r`
+    /// - Tab → `\t`
+    ///
+    /// 与 `quoted form of POSIX file` 配合使用时，主要需要处理引号和反斜杠，
+    /// 否则路径中包含 `"` 会破坏 AppleScript 字符串解析。
+    private func appleScriptEscape(_ s: String) -> String {
+        var result = ""
+        result.reserveCapacity(s.count)
+        for ch in s {
+            switch ch {
+            case "\\": result += "\\\\"
+            case "\"": result += "\\\""
+            case "\n": result += "\\n"
+            case "\r": result += "\\r"
+            case "\t": result += "\\t"
+            default: result.append(ch)
+            }
+        }
+        return result
     }
 }
