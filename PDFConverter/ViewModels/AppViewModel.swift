@@ -36,6 +36,9 @@ final class AppViewModel: ObservableObject {
     @Published var isDeepSeekConfigured: Bool = DeepSeekSettings.isConfigured
     /// 全局错误信息，非 nil 时 ContentView 顶部会显示红色错误横幅
     @Published var errorMessage: String?
+    /// Office 自动化引擎可用性（缓存），启动时检测一次
+    /// 性能优化：避免 SwiftUI body 重新计算时重复调用 NSWorkspace
+    @Published private(set) var isOfficeAutomationAvailable: Bool = false
 
     /// 引擎注册表：维护「转换类型 → 引擎」的映射关系，是核心的路由层
     private let registry: EngineRegistry
@@ -75,6 +78,8 @@ final class AppViewModel: ObservableObject {
         await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry)
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
+        // 缓存 Office 可用性（一次性检测，避免每次 SwiftUI body 重新计算时重复调用 NSWorkspace）
+        isOfficeAutomationAvailable = OfficeAvailability.check()
 
         // 如果 Office 自动化不可用但当前选中的是 Office 转换类型，重置为默认类型
         if !isOfficeAutomationAvailable && (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice) {
@@ -84,9 +89,14 @@ final class AppViewModel: ObservableObject {
         await refreshJobs()
     }
 
+    /// 重新检测 Office 可用性（在用户安装新软件后调用）。
+    func refreshOfficeAvailability() {
+        isOfficeAutomationAvailable = OfficeAvailability.check()
+    }
+
     /// 将转换类型按 `ConversionCategory` 分组，供侧边栏使用。
     /// 例如 `.pdfToImage` 分类下有 `.pdfToPNG`、`.pdfToJPEG` 等具体类型。
-    /// 如果 LibreOffice 未安装，则隐藏 `.officeToPDF` 和 `.pdfToOffice` 分类。
+    /// 如果 Office 后端不可用，则隐藏 `.officeToPDF` 和 `.pdfToOffice` 分类。
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
         let types = ConversionType.allCases
         return ConversionCategory.allCases.compactMap { cat in
@@ -98,24 +108,6 @@ final class AppViewModel: ObservableObject {
             let items = types.filter { $0.category == cat }
             return items.isEmpty ? nil : (cat, items)
         }
-    }
-
-    /// 检查是否有任何 Office 转换后端可用（优先级：Microsoft Office > Apple iWork > LibreOffice）。
-    ///
-    /// 引擎 ``OfficeAutomationEngine`` 会自动按优先级降级尝试，此处只判断
-    /// 是否至少有一个后端可用。如果全部不可用，Office 分类在 UI 中会被隐藏。
-    var isOfficeAutomationAvailable: Bool {
-        // Microsoft Office (通过 Bundle ID)
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.Word") != nil { return true }
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.Excel") != nil { return true }
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.Powerpoint") != nil { return true }
-        // Apple iWork
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iWork.Pages") != nil { return true }
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iWork.Numbers") != nil { return true }
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iWork.Keynote") != nil { return true }
-        // LibreOffice (通过 soffice 工具检测)
-        if toolReport.first(where: { $0.tool.name == "soffice" })?.available == true { return true }
-        return false
     }
 
     /// 使用 `NSOpenPanel` 打开系统文件选择对话框。
@@ -225,5 +217,48 @@ final class AppViewModel: ObservableObject {
     /// 清除当前错误信息，错误横幅随之消失。
     func clearError() {
         errorMessage = nil
+    }
+}
+
+// MARK: - OfficeAvailability
+
+/// Office 后端可用性检测（独立为 enum，避免每次 SwiftUI body 重新计算都调用 NSWorkspace）。
+///
+/// 检测逻辑：依次检查 Microsoft Office（com.microsoft.*）、Apple iWork（com.apple.iWork.*），
+/// 如果任何一个已安装即返回 true。最后回退检查 LibreOffice 是否安装（通过 toolReport）。
+enum OfficeAvailability {
+    /// Microsoft Office 套件的 Bundle ID 列表
+    static let msOfficeBundleIDs = [
+        "com.microsoft.Word",
+        "com.microsoft.Excel",
+        "com.microsoft.Powerpoint"
+    ]
+
+    /// Apple iWork 套件的 Bundle ID 列表
+    static let iWorkBundleIDs = [
+        "com.apple.iWork.Pages",
+        "com.apple.iWork.Numbers",
+        "com.apple.iWork.Keynote"
+    ]
+
+    /// 检测任意 Office 后端是否可用。
+    ///
+    /// 优先级：Microsoft Office > Apple iWork > LibreOffice (通过 soffice 工具检测)
+    /// - Returns: 任一后端可用返回 true
+    static func check() -> Bool {
+        // Microsoft Office
+        for bundleID in msOfficeBundleIDs {
+            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
+                return true
+            }
+        }
+        // Apple iWork
+        for bundleID in iWorkBundleIDs {
+            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
+                return true
+            }
+        }
+        // LibreOffice: 通过工具链报告检查 soffice
+        return ToolLocator.shared.availabilityReport().first { $0.tool.name == "soffice" }?.available == true
     }
 }
