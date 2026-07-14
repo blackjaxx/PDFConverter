@@ -24,6 +24,9 @@
 		B10000000000000000000002 /* DeepSeekSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* DeepSeekSettings.swift */; };
 		B10000000000000000000003 /* DeepSeekClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* DeepSeekClient.swift */; };
 		B10000000000000000000004 /* AppLLMEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* AppLLMEngine.swift */; };
+		C10000000000000000000001 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000011 /* AppError.swift */; };
+		C10000000000000000000002 /* ErrorCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000012 /* ErrorCenter.swift */; };
+		C10000000000000000000003 /* ErrorBannerList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000013 /* ErrorBannerList.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +43,9 @@
 		A1000000000000000000001A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1000000000000000000001B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000000000000000001C /* tools */ = {isa = PBXFileReference; lastKnownFileType = folder; name = tools; path = Resources/tools; sourceTree = "<group>"; };
+		C10000000000000000000011 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
+		C10000000000000000000012 /* ErrorCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorCenter.swift; sourceTree = "<group>"; };
+		C10000000000000000000013 /* ErrorBannerList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorBannerList.swift; sourceTree = "<group>"; };
 		A1000000000000000000001D /* PDFConverter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PDFConverter.entitlements; sourceTree = "<group>"; };
 		A1000000000000000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10000000000000000000011 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
@@ -120,6 +126,8 @@
 				B10000000000000000000020 /* AI */,
 				A10000000000000000000013 /* ToolsBootstrap.swift */,
 				A10000000000000000000014 /* AppWebKitEngine.swift */,
+				C10000000000000000000011 /* AppError.swift */,
+				C10000000000000000000012 /* ErrorCenter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -144,6 +152,7 @@
 				A10000000000000000000018 /* ConversionOptionsView.swift */,
 				A10000000000000000000019 /* JobQueueView.swift */,
 				A1000000000000000000001A /* SettingsView.swift */,
+				C10000000000000000000013 /* ErrorBannerList.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -247,6 +256,9 @@
 				B10000000000000000000002 /* DeepSeekSettings.swift in Sources */,
 				B10000000000000000000003 /* DeepSeekClient.swift in Sources */,
 				B10000000000000000000004 /* AppLLMEngine.swift in Sources */,
+				C10000000000000000000001 /* AppError.swift in Sources */,
+				C10000000000000000000002 /* ErrorCenter.swift in Sources */,
+				C10000000000000000000003 /* ErrorBannerList.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
