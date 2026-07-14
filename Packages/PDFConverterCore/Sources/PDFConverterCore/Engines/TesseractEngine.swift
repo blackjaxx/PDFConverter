@@ -51,38 +51,53 @@ public struct TesseractEngine: ConversionEngine {
         }
 
         let tool = try ToolLocator.shared.require(tesseract)
-        // 将多个语言用 + 连接，例如 ["chi_sim", "eng"] → "chi_sim+eng"
-        let langs = context.job.parameters.ocrLanguages.joined(separator: "+")
-        let outBase = context.workDirectory.appendingPathComponent("ocr_output")
+
+        // 关键修复（v0.4.2）：TESSDATA_PREFIX 必须以 "/" 结尾
+        // Tesseract 4.x 行为：TESSDATA_PREFIX 是 tessdata 目录的**父目录**
+        // 即：PREFIX/tessdata/chi_sim.traineddata 这种结构
+        // 我们打包的目录结构是 Resources/tools/tesseract/tessdata/*.traineddata
+        // 所以 PREFIX 应为 tesseract 目录的路径（包含末尾斜杠）
+        let tessdataParent = tool.deletingLastPathComponent()  // .../tools/tesseract/
+        let env: [String: String] = [
+            "TESSDATA_PREFIX": tessdataParent.path + "/"
+        ]
+
+        // 用 input stem 命名输出（避免与其他转换任务冲突）
+        let inputStem = input.deletingPathExtension().lastPathComponent
+        let outBase = context.workDirectory.appendingPathComponent(inputStem + "_ocr")
         let out = try context.makeOutputURL(suffix: "_ocr", extension: "pdf")
 
-        // TESSDATA_PREFIX：告诉 Tesseract 去哪里找语言数据包
-        // 工具位于 Resources/tools/tesseract/tesseract
-        // tessdata 位于 Resources/tools/tesseract/tessdata/
-        // PREFIX 需要指向包含 tessdata 的父目录
-        let tessdataParent = tool.deletingLastPathComponent()
-        let env: [String: String] = ["TESSDATA_PREFIX": tessdataParent.path]
+        // 启动转换时把进度推到 0.1
+        await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.1)
 
-        // Tesseract 参数说明：
-        // input.pdf              → 输入文件
-        // ocr_output             → 输出基础名（Tesseract 自动加 .pdf 扩展名）
-        // -l chi_sim+eng         → OCR 识别语言
-        // pdf                    → 输出类型
+        // Tesseract 参数：
+        // input.pdf  → 输入文件
+        // outBase    → 输出基础名（Tesseract 自动加 .pdf 扩展名）
+        // -l langs   → OCR 识别语言
+        // pdf        → 输出类型
+        let langs = context.job.parameters.ocrLanguages.joined(separator: "+")
         let args = [input.path, outBase.path, "-l", langs, "pdf"]
-        _ = try await ProcessRunner.runChecked(executable: tool, arguments: args, environment: env, currentDirectory: context.workDirectory)
+        _ = try await ProcessRunner.runChecked(
+            executable: tool,
+            arguments: args,
+            environment: env,
+            currentDirectory: context.workDirectory
+        )
 
-        // Tesseract 生成的文件名为 `ocr_output.pdf`（会自动追加扩展名）
+        // OCR 完成，推到 0.9
+        await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.9)
+
+        // Tesseract 生成的文件名是 `<outBase>.pdf`
         let generated = outBase.appendingPathExtension("pdf")
-        if FileManager.default.fileExists(atPath: generated.path) {
-            if FileManager.default.fileExists(atPath: out.path) {
-                try FileManager.default.removeItem(at: out)
-            }
-            try FileManager.default.moveItem(at: generated, to: out)
+        guard FileManager.default.fileExists(atPath: generated.path) else {
+            throw ConversionError.outputMissing(generated.path)
         }
 
-        guard FileManager.default.fileExists(atPath: out.path) else {
-            throw ConversionError.outputMissing(out.path)
+        if FileManager.default.fileExists(atPath: out.path) {
+            try FileManager.default.removeItem(at: out)
         }
+        try FileManager.default.moveItem(at: generated, to: out)
+
         return ConversionResult(outputURLs: [out])
     }
 }
