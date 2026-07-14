@@ -4,7 +4,9 @@
 
 ## 项目目标
 
-这是一个面向**学习与二次开发**的开源项目，设计清晰、注释详细，适合 Swift/SwiftUI 初学者阅读和理解 macOS 应用的完整架构。
+这是一个面向 **学习与二次开发** 的开源项目，设计清晰、注释详细，适合 Swift/SwiftUI 初学者阅读和理解 macOS 应用的完整架构。
+
+![App Icon](docs/app-icon-preview.png)
 
 ## 下载与安装
 
