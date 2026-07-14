@@ -98,6 +98,225 @@ cd Packages/PDFConverterCore && swift test
 └──────────────────────────────────────────────────┘
 ```
 
+## 数据流：从「开始转换」到文件生成
+
+下图展示一次完整的转换流程，涉及 SwiftUI 视图层、ViewModel 层、Core 层引擎层和外部 CLI 工具：
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          用户操作（SwiftUI 视图层）                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────┐  拖拽文件   ┌──────────────┐  选类型    ┌──────────────────┐  │
+│  │DropZone  │──────────▶│ FileListView │──────────▶│ ConversionPanel  │  │
+│  │  View    │           │              │           │      View        │  │
+│  └──────────┘           └──────────────┘           └────────┬─────────┘  │
+│                                                            │ 点开始        │
+│                                                            ▼              │
+│  ┌──────────────┐                                  ┌──────────────────┐   │
+│  │  Sidebar     │                                  │  Conversion      │   │
+│  │  View        │                                  │  Options View    │   │
+│  └──────────────┘                                  │ (参数:DPI/密码等) │   │
+│                                                    └────────┬─────────┘   │
+│                                                             │             │
+│  ┌──────────────────────────────────────────────────────────▼──────────┐  │
+│  │                       ContentView (主视图)                            │  │
+│  └────────────────────────────────────┬─────────────────────────────────┘  │
+└─────────────────────────────────────┼────────────────────────────────────┘
+                                      │ @EnvironmentObject
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       AppViewModel (@MainActor)                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌──────────────────────────────────────────────────────────────────┐     │
+│   │ @Published inputURLs / selectedType / parameters / jobs           │     │
+│   └──────────────────────────────────────────────────────────────────┘     │
+│              │                                            ▲                  │
+│   enqueueConversion()                              AsyncStream observeJobs()│
+│              │                                            │                  │
+│              ▼                                            │                  │
+│   ┌──────────────────────────────────────────┐            │                  │
+│   │  ConversionJob(                           │            │                  │
+│   │    type, inputURLs, outputDirectory,      │            │                  │
+│   │    parameters                            │            │                  │
+│   │  )                                       │            │                  │
+│   └────────────────────┬─────────────────────┘            │                  │
+│                        │                                  │                  │
+│                        │ progressHandler 闭包            │                  │
+│                        │ (在 MainActor 上调用)            │                  │
+└────────────────────────┼──────────────────────────────────┼──────────────────┘
+                         │                                  │
+                         ▼                                  │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  JobOrchestrator (actor, Core 层)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   enqueue(job)                                                              │
+│      │                                                                      │
+│      ▼                                                                      │
+│   queue.append(job)  ──── broadcastUpdate() ──────────────────────────────┐  │
+│      │                                                                  │  │
+│      ▼                                                                  │  │
+│   pump()                                                               │  │
+│      │  取第一个 pending 任务                                           │  │
+│      │  设置 status = .running, progress = 0.05                        │  │
+│      │  notify(job)  ────────▶ 触发 UI 更新 ◀───────── AsyncStream ────┘  │
+│      ▼                                                                  ▲  │
+│   execute(job)                                                         │  │
+│      │                                                                  │  │
+│      ▼                                                                  │  │
+│   ┌──────────────────────────────────────────────────────────────┐    │  │
+│   │  EngineRegistry.engine(for: job.type)                        │    │  │
+│   │      │                                                       │    │  │
+│   │      ▼                                                       │    │  │
+│   │  typeIndex: [ConversionType: any ConversionEngine]           │    │  │
+│   │  ┌──────────────────────────────────────────────────────┐   │    │  │
+│   │  │ .pdfToPNG     → PopplerEngine                        │   │    │  │
+│   │  │ .mergePDF     → PDFKitEngine                         │   │    │  │
+│   │  │ .wordToPDF    → OfficeAutomationEngine ─┐            │   │    │  │
+│   │  │ .ocrPDF       → TesseractEngine          │            │   │    │  │
+│   │  │ .pdfAITranslate → AppLLMEngine          │            │   │    │  │
+│   │  │ ...                                       │            │   │    │  │
+│   │  └──────────────────────────────────────────│────────────┘   │    │  │
+│   └─────────────────────────────────────────────│────────────────┘    │  │
+│                                                 │                     │  │
+│   ┌─────────────────────────────────────────────▼────────────────┐   │  │
+│   │  engine.convert(context: ConversionContext)                  │   │  │
+│   │  ┌──────────────────────────────────────────────────────────┐│   │  │
+│   │  │ context.workDirectory = /tmp/PDFConverter/<job-uuid>/    ││   │  │
+│   │  │ context.toolsRoot       = Resources/tools/               ││   │  │
+│   │  │ context.job              = ConversionJob                  ││   │  │
+│   │  └──────────────────────────────────────────────────────────┘│   │  │
+│   └────────────────────────────────┬─────────────────────────────┘   │  │
+│                                    │ ConversionResult                 │  │
+│                                    │ { outputURLs, logs }              │  │
+│                                    ▼                                  │  │
+│   设置 status = .completed, progress = 1.0                            │  │
+│   notify(job) ─────────▶ 触发 UI 更新 ◀───────── AsyncStream ─────────┘  │
+│                                                                            │
+│   （整个过程中引擎可调用 updateProgress(id:, progress:) 推送中间进度）   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  引擎层（Core/Engines/）                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌────────────────────────────────────┐                                   │
+│   │  PDFKitEngine  (macOS 原生框架)     │  pngToPDF / mergePDF / rotatePDF  │
+│   │  PDFDocument, PDFPage               │  → 不调用外部 CLI                  │
+│   └────────────────────────────────────┘                                   │
+│                                                                             │
+│   ┌────────────────────────────────────┐                                   │
+│   │  PopplerEngine                     │  pdfToPNG / pdfToText            │
+│   │  ProcessRunner.runChecked()        │  → pdftoppm / pdftotext         │
+│   │      │                             │                                   │
+│   │      ▼                             │                                   │
+│   │  Process(args: pdftoppm ...)       │                                   │
+│   └────────────────────────────────────┘                                   │
+│                                                                             │
+│   ┌────────────────────────────────────┐                                   │
+│   │  OfficeAutomationEngine (智能降级)  │  wordToPDF / pdfToWord            │
+│   │  ┌────────────────────────────────┐│                                   │
+│   │  │ 1. Microsoft Office (osascript)││                                   │
+│   │  │     ↓ 失败                     ││                                   │
+│   │  │ 2. Apple iWork (osascript)     ││                                   │
+│   │  │     ↓ 失败                     ││                                   │
+│   │  │ 3. LibreOffice (soffice --hd)  ││                                   │
+│   │  └────────────────────────────────┘│                                   │
+│   └────────────────────────────────────┘                                   │
+│                                                                             │
+│   ┌────────────────────────────────────┐                                   │
+│   │  TesseractEngine / Ghostscript /   │  ocrPDF / compressPDF / ...       │
+│   │  QpdfEngine / AppWebKitEngine      │  → 对应 CLI 工具                  │
+│   └────────────────────────────────────┘                                   │
+│                                                                             │
+│   ┌────────────────────────────────────┐                                   │
+│   │  AppLLMEngine (云端)               │  pdfAISummary / pdfAITranslate   │
+│   │  pdftotext → DeepSeek API          │  → HTTPS POST api.deepseek.com   │
+│   └────────────────────────────────────┘                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  外部依赖层                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌────────────────────────┐  ┌────────────────────┐  ┌────────────────┐    │
+│  │ macOS PDFKit Framework │  │ Resources/tools/   │  │  系统 PATH      │    │
+│  │ (Swift 框架,系统自带)  │  │  ├─ poppler/       │  │  ├─ soffice    │    │
+│  └────────────────────────┘  │  ├─ qpdf/          │  │  └─ ...        │    │
+│                             │  ├─ ghostscript/   │  └────────────────┘    │
+│                             │  ├─ tesseract/     │                          │
+│                             │  └─ libreoffice/   │                          │
+│                             └────────────────────┘                          │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │  Keychain (存储 DeepSeek API Key)                            │           │
+│  │  UserDefaults (存储 BaseURL / Model 名称)                    │           │
+│  └─────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │  DeepSeek API  (https://api.deepseek.com)  仅 AI 功能使用     │           │
+│  └─────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 关键路径详解
+
+#### 1. 任务创建到入队
+```
+用户拖拽文件 → DropZoneView 更新 inputURLs
+            → 用户选择类型 → SidebarView 更新 selectedType
+            → 用户调整参数 → ConversionOptionsView 更新 parameters
+            → 用户点「开始转换」→ ContentView 触发 enqueueConversion()
+            → AppViewModel 创建 ConversionJob 提交到 JobOrchestrator
+```
+
+#### 2. 任务调度与执行
+```
+JobOrchestrator.pump() 找到第一个 pending 任务
+                      设置为 running（progress = 0.05）
+                      触发 notify → AppViewModel 更新 jobs[i].progress → UI 立即渲染
+                      异步执行 executeJob(job)
+                          → EngineRegistry 查找引擎
+                          → engine.convert(context) 执行转换
+                              → 引擎可调用 JobOrchestrator.updateProgress() 推送中间进度
+                          → 收到 ConversionResult，设置 completed / failed
+                      notify → UI 更新状态徽章和输出文件链接
+                      AsyncStream 推送最新任务列表给所有订阅者
+                      重新 pump() 处理下一个任务
+```
+
+#### 3. UI 响应（关键解耦）
+```
+JobOrchestrator 状态变化
+   ├─ notify(progressHandler)        ──▶ 闭包更新 jobs 数组（in-place 修改）
+   └─ broadcastUpdate(AsyncStream)   ──▶ 推送新快照给所有订阅者
+
+AppViewModel 监听这两条路径：
+   - progressHandler 闭包: 即时更新当前正在变化的任务
+   - AsyncStream: 兜底推送整张任务表（兜底同步）
+两路合并后 SwiftUI 自动重渲染
+```
+
+#### 4. 智能降级（OfficeAutomationEngine 专属）
+```
+用户转换 Word → PDF
+   ├─ 检查 com.microsoft.Word 是否安装
+   │     └─ 是 → AppleScript 调用 Word 导出 PDF → 完成
+   │     └─ 否 ↓
+   ├─ 检查 com.apple.iWork.Pages 是否安装
+   │     └─ 是 → AppleScript 调用 Pages 导出 PDF → 完成
+   │     └─ 否 ↓
+   └─ 回退到 LibreOfficeEngine (soffice --headless --convert-to pdf)
+         └─ 用户需先安装 LibreOffice（提示信息由 ConversionError.missingTool 提供）
+```
+
 ## 核心设计思想
 
 ### 1. 可插拔引擎（ConversionEngine 协议）
