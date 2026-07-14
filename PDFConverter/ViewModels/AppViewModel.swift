@@ -82,6 +82,15 @@ final class AppViewModel: ObservableObject {
         let failed = jobs.filter { $0.status == .failed }
         for job in failed where !notifiedJobFailures.contains(job.id) {
             notifiedJobFailures.insert(job.id)
+            // v0.4.5：写日志（同时出现在 Console.app 和设置页面日志查看器）
+            AppLogger.shared.error(
+                "任务失败: \(job.type.displayName)",
+                metadata: [
+                    "jobID": job.id.uuidString,
+                    "error": job.errorMessage ?? "未知错误",
+                    "stderr": job.stderrDetails ?? "(无详细信息)"
+                ]
+            )
             ErrorCenter.shared.report(AppError.jobFailed(
                 jobType: job.type.displayName,
                 error: job.errorMessage ?? "未知错误",
@@ -211,22 +220,40 @@ final class AppViewModel: ObservableObject {
     }
 
     func enqueueConversion() {
-        guard !inputURLs.isEmpty else { return }
+        guard !inputURLs.isEmpty else {
+            AppLogger.shared.warning("enqueueConversion called with empty inputURLs")
+            return
+        }
+
+        AppLogger.shared.info(
+            "Enqueueing conversion: \(selectedType.displayName)",
+            metadata: [
+                "type": selectedType.rawValue,
+                "fileCount": String(inputURLs.count),
+                "outputDir": outputDirectory?.path ?? "(default)"
+            ]
+        )
 
         if (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice)
             && !isOfficeAutomationAvailable {
+            AppLogger.shared.warning("Office conversion attempted but no backend available")
             ErrorCenter.shared.report(AppError.missingLibreOffice())
             showOfficeInstallSheet = true
             return
         }
 
         if selectedType.requiresNetwork && !isDeepSeekConfigured {
+            AppLogger.shared.warning("AI conversion attempted but DeepSeek not configured")
             ErrorCenter.shared.report(AppError.deepSeekNotConfigured())
             return
         }
 
         for url in inputURLs {
             guard FileManager.default.isReadableFile(atPath: url.path) else {
+                AppLogger.shared.error(
+                    "Input file not readable",
+                    metadata: ["path": url.path]
+                )
                 ErrorCenter.shared.report(AppError.fileReadFailed(
                     path: url.path,
                     error: "文件不存在或无读取权限"
