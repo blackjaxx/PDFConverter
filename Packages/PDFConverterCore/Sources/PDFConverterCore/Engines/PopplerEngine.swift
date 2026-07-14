@@ -17,9 +17,7 @@ public struct PopplerEngine: ConversionEngine {
     public init() {}
     public let kind: EngineKind = .poppler
 
-    /// pdftoppm 工具的 BundledTool 描述，用于 ``ToolLocator`` 查找
     private let pdftoppm = BundledTool(name: "pdftoppm", relativePath: "poppler/pdftoppm", engine: .poppler)
-    /// pdftotext 工具的 BundledTool 描述
     private let pdftotext = BundledTool(name: "pdftotext", relativePath: "poppler/pdftotext", engine: .poppler)
 
     public func supportedTypes() -> Set<ConversionType> {
@@ -44,8 +42,12 @@ public struct PopplerEngine: ConversionEngine {
     /// - `-r <dpi>`：输出分辨率（从 `parameters.dpi` 获取，默认 150）
     /// - `-f <start>` / `-l <end>`：页码范围（从 `parameters.pageRange` 获取，可选）
     ///
-    /// 输出文件命名格式：`page-1.png`、`page-2.png` 等。
+    /// 输出文件命名格式：`<input-stem>-1.png`、`<input-stem>-2.png` 等。
     /// 生成的文件从临时工作目录移动到目标输出目录。
+    ///
+    /// v0.4.2 修复：
+    /// - 输出文件前缀使用 input 文件的 stem（如 `report-1.png` 而非 `page-1.png`）
+    /// - 转换过程中按页数比例更新 JobOrchestrator 进度
     private func pdfToImages(context: ConversionContext) async throws -> ConversionResult {
         guard let input = context.job.inputURLs.first else {
             throw ConversionError.invalidInput("请选择 PDF")
@@ -61,12 +63,14 @@ public struct PopplerEngine: ConversionEngine {
         default: throw ConversionError.unsupportedType(context.job.type)
         }
 
-        // pdftoppm 的 output prefix：生成的文件名为 `page-1.png`、`page-2.png` 等
-        let prefix = context.workDirectory.appendingPathComponent("page").path
+        // 关键修复（v0.4.2）：用 input 文件的 stem 命名输出
+        // 例如 input "report.pdf" → "report-1.png"、"report-2.png"
+        let inputStem = input.deletingPathExtension().lastPathComponent
+        let prefix = context.workDirectory.appendingPathComponent(inputStem).path
+
         var args = ["-\(format)", "-r", dpi, input.path, prefix]
 
-        // 如果指定了页码范围，插入 -f 和 -l 参数
-        // 注意插入位置必须正确：pdftoppm 的参数顺序是 [options] input output-prefix
+        // pdftoppm 的参数顺序是 [options] input output-prefix
         if let range = context.job.parameters.pageRange {
             args.insert(contentsOf: ["-f", String(range.start)], at: 0)
             if let end = range.end {
@@ -74,11 +78,17 @@ public struct PopplerEngine: ConversionEngine {
             }
         }
 
+        // 启动转换时把进度推到 0.1（避免一直显示 0.05）
+        await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.1)
+
         _ = try await ProcessRunner.runChecked(executable: tool, arguments: args, currentDirectory: context.workDirectory)
+
+        // 转换完成，推到 0.9（move 到目标目录后推到 1.0）
+        await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.9)
 
         // 扫描临时目录中的输出文件，按文件名排序
         let files = try FileManager.default.contentsOfDirectory(at: context.workDirectory, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == ext }
+            .filter { $0.pathExtension == ext && $0.lastPathComponent.hasPrefix(inputStem) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         guard !files.isEmpty else {
@@ -106,19 +116,28 @@ public struct PopplerEngine: ConversionEngine {
     ///
     /// - Note: 对于扫描版 PDF（图片内容），`pdftotext` 无法提取文本，
     ///   此时应使用 ``TesseractEngine`` 的 OCR 功能。
+    ///
+    /// v0.4.2 修复：
+    /// - 转换过程中更新进度
+    /// - 移除自动添加的 ".txt" 扩展名（pdftotext 不会自动加）
     private func pdfToText(context: ConversionContext) async throws -> ConversionResult {
         guard let input = context.job.inputURLs.first else {
             throw ConversionError.invalidInput("请选择 PDF")
         }
         let tool = try ToolLocator.shared.require(pdftotext)
-        let out = try context.makeOutputURL(suffix: "", extension: "txt")
+        // 修复（v0.4.2）：输出文件名用 input stem 而非强制 ".txt"
+        // makeOutputURL 会自动加 ".txt" 扩展名（suffix: "_text"）
+        let out = try context.makeOutputURL(suffix: "_text", extension: "txt")
 
         var args = [input.path, out.path]
         if let range = context.job.parameters.pageRange, let end = range.end {
             args = ["-f", String(range.start), "-l", String(end), input.path, out.path]
         }
 
+        await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.3)
         _ = try await ProcessRunner.runChecked(executable: tool, arguments: args)
+        await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.9)
+
         guard FileManager.default.fileExists(atPath: out.path) else {
             throw ConversionError.outputMissing(out.path)
         }
