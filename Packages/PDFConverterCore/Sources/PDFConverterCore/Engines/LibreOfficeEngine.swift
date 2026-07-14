@@ -31,6 +31,8 @@ public struct LibreOfficeEngine: ConversionEngine {
 
     public func supportedTypes() -> Set<ConversionType> {
         [.wordToPDF, .excelToPDF, .pptToPDF, .pdfToWord, .pdfToExcel]
+    }
+
     public func convert(context: ConversionContext) async throws -> ConversionResult {
         guard let input = context.job.inputURLs.first else {
             throw ConversionError.invalidInput("请选择 Office 文件")

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// 智能 Office 自动化引擎，按优先级链式尝试多个后端完成 Office 文档与 PDF 的互转。
