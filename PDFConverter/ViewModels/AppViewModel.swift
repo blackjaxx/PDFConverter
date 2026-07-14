@@ -37,19 +37,22 @@ final class AppViewModel: ObservableObject {
     /// 全局错误信息，非 nil 时 ContentView 顶部会显示红色错误横幅
     @Published var errorMessage: String?
     /// Office 自动化引擎可用性（缓存），启动时检测一次
-    /// 性能优化：避免 SwiftUI body 重新计算时重复调用 NSWorkspace
     @Published private(set) var isOfficeAutomationAvailable: Bool = false
 
     /// 引擎注册表：维护「转换类型 → 引擎」的映射关系，是核心的路由层
     private let registry: EngineRegistry
-    /// 定时刷新队列的后台任务引用
-    private var refreshTask: Task<Void, Never>?
+    /// 订阅 JobOrchestrator 任务状态变化的 Task
+    private var jobsObserverTask: Task<Void, Never>?
 
     init(registry: EngineRegistry? = nil) {
         self.registry = registry ?? Self.makeDefaultRegistry()
         Task {
             await bootstrap()
         }
+    }
+
+    deinit {
+        jobsObserverTask?.cancel()
     }
 
     /// 组装完整的引擎注册表：包含本地 CLI 引擎（PDFKit、Poppler、Qpdf 等）
@@ -70,23 +73,51 @@ final class AppViewModel: ObservableObject {
 
     /// 应用启动时的初始化流程：
     /// 1. 定位 Bundle 内的工具目录，配置 JobOrchestrator
-    /// 2. 从 Keychain/UserDefaults 加载 DeepSeek 设置
-    /// 3. 扫描并报告离线 CLI 工具的可用性状态
-    /// 4. 从 JobOrchestrator 获取初始任务列表
+    /// 2. **注册 progressHandler**（修复 v0.4.2：原来没注册，进度条永远不动）
+    /// 3. **订阅 JobOrchestrator 的 AsyncStream**（修复：UI 自动响应状态变化）
+    /// 4. 从 Keychain/UserDefaults 加载 DeepSeek 设置
+    /// 5. 扫描并报告离线 CLI 工具的可用性状态
     func bootstrap() async {
         let toolsRoot = ToolsBootstrap.toolsRootURL()
-        await JobOrchestrator.shared.configure(toolsRoot: toolsRoot, registry: registry)
+
+        // 关键修复（v0.4.2）：传入 progressHandler，让进度回调能到达 UI
+        await JobOrchestrator.shared.configure(
+            toolsRoot: toolsRoot,
+            registry: registry,
+            progressHandler: { [weak self] jobID, progress, status in
+                // 这个闭包被 MainActor 隔离（@MainActor @Sendable）
+                self?.handleProgressUpdate(jobID: jobID, progress: progress, status: status)
+            }
+        )
+
+        // 关键修复（v0.4.2）：订阅 JobOrchestrator 的 AsyncStream，
+        // 任务状态变化时自动更新 jobs 数组
+        jobsObserverTask = Task { [weak self] in
+            guard let self else { return }
+            for await updatedJobs in await JobOrchestrator.shared.observeJobs() {
+                self.jobs = updatedJobs
+            }
+        }
+
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
-        // 缓存 Office 可用性（一次性检测，避免每次 SwiftUI body 重新计算时重复调用 NSWorkspace）
         isOfficeAutomationAvailable = OfficeAvailability.check()
 
-        // 如果 Office 自动化不可用但当前选中的是 Office 转换类型，重置为默认类型
         if !isOfficeAutomationAvailable && (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice) {
             selectedType = .pdfToPNG
         }
 
         await refreshJobs()
+    }
+
+    /// 处理 JobOrchestrator 的进度回调。
+    ///
+    /// 这个方法在主线程上调用（@MainActor）。
+    /// 更新对应任务在 jobs 数组中的状态，触发 SwiftUI 自动重渲染。
+    private func handleProgressUpdate(jobID: UUID, progress: Double, status: JobStatus) {
+        guard let index = jobs.firstIndex(where: { $0.id == jobID }) else { return }
+        jobs[index].progress = progress
+        jobs[index].status = status
     }
 
     /// 重新检测 Office 可用性（在用户安装新软件后调用）。
@@ -95,16 +126,11 @@ final class AppViewModel: ObservableObject {
     }
 
     /// 将转换类型按 `ConversionCategory` 分组，供侧边栏使用。
-    /// 例如 `.pdfToImage` 分类下有 `.pdfToPNG`、`.pdfToJPEG` 等具体类型。
-    /// 如果 Office 后端不可用，则隐藏 `.officeToPDF` 和 `.pdfToOffice` 分类。
-    /// 将转换类型按 `ConversionCategory` 分组，供侧边栏使用。
-    /// 例如 `.pdfToImage` 分类下有 `.pdfToPNG`、`.pdfToJPEG` 等具体类型。
     ///
     /// 关键行为变更（v0.4.1）：Office 分类现在**始终显示**，即使所有 Office
     /// 后端都不可用。原因：
     /// - 旧行为会在没有任何 Office 后端时隐藏整个分类，用户根本不知道有这功能
     /// - 新行为：分类始终可见，侧边栏内每个 Office 类型会显示「需安装」徽章
-    /// - 用户点击后可在设置中查看如何安装（或由 `officeAvailabilityStatus` 引导）
     ///
     /// 这种设计更符合「告知用户能做什么」的可用性原则——而不只是隐藏不可用项。
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
@@ -116,20 +142,11 @@ final class AppViewModel: ObservableObject {
     }
 
     /// Office 分类在当前环境下是否可执行实际转换。
-    ///
-    /// 用于 SidebarView 显示「需安装」徽章和 SettingsView 中显示安装指引。
-    /// 不会影响分类的显示与否——分类永远显示，只是徽章反映当前可用性。
     var hasOfficeBackendAvailable: Bool {
         isOfficeAutomationAvailable
     }
 
     /// 检查某个 ConversionType 在当前环境下是否有可用的后端。
-    ///
-    /// 返回 false 的情况：
-    /// - 该类型属于 Office 分类，但没有 Office 后端（MS Office / iWork / LibreOffice）
-    /// - 该类型需要网络但 DeepSeek 未配置（AI 类型）
-    ///
-    /// 用于 SidebarView 显示「需安装」徽章和 ConversionOptionsView 显示安装指引。
     func isBackendAvailable(for type: ConversionType) -> Bool {
         switch type.category {
         case .officeToPDF, .pdfToOffice:
@@ -142,8 +159,6 @@ final class AppViewModel: ObservableObject {
     }
 
     /// 使用 `NSOpenPanel` 打开系统文件选择对话框。
-    /// `allowsMultipleSelection` 在合并 PDF 模式下允许多选（因为合并需要多个文件），
-    /// 其他模式下仅单选。
     func pickFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -158,7 +173,6 @@ final class AppViewModel: ObservableObject {
     }
 
     /// 使用 `NSOpenPanel` 打开系统目录选择对话框。
-    /// 支持新建目录（`canCreateDirectories = true`）。
     func pickOutputDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -172,6 +186,9 @@ final class AppViewModel: ObservableObject {
 
     /// 创建 `ConversionJob` 并提交到 `JobOrchestrator` 的异步任务队列。
     /// JobOrchestrator 负责按 FIFO 顺序调度任务、匹配引擎并执行转换。
+    ///
+    /// 关键修复（v0.4.2）：不再手动调用 refreshJobs()，因为已经通过
+    /// AsyncStream 订阅了状态变化。
     func enqueueConversion() {
         guard !inputURLs.isEmpty else { return }
         let job = ConversionJob(
@@ -182,25 +199,25 @@ final class AppViewModel: ObservableObject {
         )
         Task {
             await JobOrchestrator.shared.enqueue(job)
-            await refreshJobs()
+            // AsyncStream 会自动推送状态更新，无需手动 refreshJobs()
         }
     }
 
-    /// 从 `JobOrchestrator` 获取最新的完整任务列表，
-    /// 并更新 `jobs` 属性以刷新 UI。
+    /// 从 `JobOrchestrator` 获取最新的完整任务列表。
+    ///
+    /// v0.4.2：此方法保留为手动刷新入口，但正常情况下 UI 通过 AsyncStream
+    /// 自动更新，无需主动调用。
     func refreshJobs() async {
         let list = await JobOrchestrator.shared.allJobs()
         jobs = list
     }
 
     /// 在 Finder 中定位并高亮显示给定的文件。
-    /// `activateFileViewerSelecting` 会打开一个新 Finder 窗口并选中目标文件。
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    /// 根据转换类型查找对应的引擎名称（如 "PDFKit"、"Poppler"），
-    /// 在转换面板中显示给用户，让用户知道当前使用的底层工具。
+    /// 根据转换类型查找对应的引擎名称。
     func engineLabel(for type: ConversionType) -> String {
         registry.engine(for: type)?.kind.rawValue ?? "—"
     }
@@ -211,8 +228,7 @@ final class AppViewModel: ObservableObject {
         selectedType.requiresNetwork && !isDeepSeekConfigured
     }
 
-    /// 从 `DeepSeekSettings` 重新读取配置，
-    /// 同步到 ViewModel 的 `@Published` 属性。
+    /// 从 `DeepSeekSettings` 重新读取配置。
     func reloadDeepSeekSettings() {
         deepSeekBaseURL = DeepSeekSettings.baseURL
         deepSeekModel = DeepSeekSettings.model
@@ -220,8 +236,7 @@ final class AppViewModel: ObservableObject {
         deepSeekAPIKeyInput = ""
     }
 
-    /// 保存 DeepSeek 配置：BaseURL 和模型写入 `UserDefaults`，
-    /// API Key 写入系统 Keychain（安全存储）。
+    /// 保存 DeepSeek 配置。
     func saveDeepSeekSettings() {
         DeepSeekSettings.baseURL = deepSeekBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         DeepSeekSettings.model = deepSeekModel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -254,42 +269,30 @@ final class AppViewModel: ObservableObject {
 // MARK: - OfficeAvailability
 
 /// Office 后端可用性检测（独立为 enum，避免每次 SwiftUI body 重新计算都调用 NSWorkspace）。
-///
-/// 检测逻辑：依次检查 Microsoft Office（com.microsoft.*）、Apple iWork（com.apple.iWork.*），
-/// 如果任何一个已安装即返回 true。最后回退检查 LibreOffice 是否安装（通过 toolReport）。
 enum OfficeAvailability {
-    /// Microsoft Office 套件的 Bundle ID 列表
     static let msOfficeBundleIDs = [
         "com.microsoft.Word",
         "com.microsoft.Excel",
         "com.microsoft.Powerpoint"
     ]
 
-    /// Apple iWork 套件的 Bundle ID 列表
     static let iWorkBundleIDs = [
         "com.apple.iWork.Pages",
         "com.apple.iWork.Numbers",
         "com.apple.iWork.Keynote"
     ]
 
-    /// 检测任意 Office 后端是否可用。
-    ///
-    /// 优先级：Microsoft Office > Apple iWork > LibreOffice (通过 soffice 工具检测)
-    /// - Returns: 任一后端可用返回 true
     static func check() -> Bool {
-        // Microsoft Office
         for bundleID in msOfficeBundleIDs {
             if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
                 return true
             }
         }
-        // Apple iWork
         for bundleID in iWorkBundleIDs {
             if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
                 return true
             }
         }
-        // LibreOffice: 通过工具链报告检查 soffice
         return ToolLocator.shared.availabilityReport().first { $0.tool.name == "soffice" }?.available == true
     }
 }
