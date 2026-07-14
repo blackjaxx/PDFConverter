@@ -61,8 +61,8 @@ final class AppViewModel: ObservableObject {
         jobsObserverTask = Task { [weak self] in
             guard let self else { return }
             for await updatedJobs in await JobOrchestrator.shared.observeJobs() {
-                await MainActor.run { self.jobs = updatedJobs }
-                await self.checkForFailedJobs(in: updatedJobs)
+                self.jobs = updatedJobs
+                self.checkForFailedJobs(in: updatedJobs)
             }
         }
 
