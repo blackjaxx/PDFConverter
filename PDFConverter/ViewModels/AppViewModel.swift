@@ -3,7 +3,6 @@ import Combine
 import Foundation
 import PDFConverterCore
 
-/// 这是应用的**核心 ViewModel**。
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var selectedType: ConversionType = .pdfToPNG
@@ -17,33 +16,24 @@ final class AppViewModel: ObservableObject {
     @Published var deepSeekModel: String = DeepSeekSettings.model
     @Published var isDeepSeekConfigured: Bool = DeepSeekSettings.isConfigured
     @Published private(set) var isOfficeAutomationAvailable: Bool = false
-    /// v0.4.3：是否显示 Office 安装指引 sheet
     @Published var showOfficeInstallSheet: Bool = false
 
     private let registry: EngineRegistry
     private var jobsObserverTask: Task<Void, Never>?
+    private var notifiedJobFailures: Set<UUID> = []
 
     init(registry: EngineRegistry? = nil) {
         self.registry = registry ?? Self.makeDefaultRegistry()
-        Task {
-            await bootstrap()
-        }
+        Task { await bootstrap() }
     }
 
-    deinit {
-        jobsObserverTask?.cancel()
-    }
+    deinit { jobsObserverTask?.cancel() }
 
     static func makeDefaultRegistry() -> EngineRegistry {
         EngineRegistry(engines: [
-            PDFKitEngine(),
-            PopplerEngine(),
-            QpdfEngine(),
-            GhostscriptEngine(),
-            OfficeAutomationEngine(),
-            TesseractEngine(),
-            AppWebKitEngine(),
-            AppLLMEngine()
+            PDFKitEngine(), PopplerEngine(), QpdfEngine(), GhostscriptEngine(),
+            OfficeAutomationEngine(), TesseractEngine(),
+            AppWebKitEngine(), AppLLMEngine()
         ])
     }
 
@@ -74,43 +64,29 @@ final class AppViewModel: ObservableObject {
             selectedType = .pdfToPNG
         }
 
-        // v0.4.3：启动时检测关键工具，缺失则提示用户
         checkStartupToolAvailability()
-
         await refreshJobs()
     }
 
-    /// v0.4.3：检测启动时关键工具是否就绪
-    ///
-    /// - 检查 poppler/qpdf/ghostscript/tesseract 这些核心 CLI 工具
-    /// - 缺失的工具会通过 ErrorCenter 推送警告横幅
-    /// - 用户可以选择"查看详情"跳到设置页面
     private func checkStartupToolAvailability() {
         let criticalTools = ["pdftoppm", "pdftotext", "qpdf", "gs", "tesseract"]
         let missing = toolReport
             .filter { criticalTools.contains($0.tool.name) && !$0.available }
             .map { $0.tool.name }
-
         if !missing.isEmpty {
             ErrorCenter.shared.report(AppError.missingCriticalTools(missing))
         }
     }
 
-    /// v0.4.3：检查任务列表中的失败任务，自动推送到错误中心。
-    /// - 只推送一次（每个失败任务只推送一次，避免重复通知）
-    /// - 已通知过的任务 ID 用 notifiedJobFailures 集合追踪
-    private var notifiedJobFailures: Set<UUID> = []
-
     private func checkForFailedJobs(in jobs: [ConversionJob]) {
         let failed = jobs.filter { $0.status == .failed }
         for job in failed where !notifiedJobFailures.contains(job.id) {
             notifiedJobFailures.insert(job.id)
-            let error = AppError.jobFailed(
+            ErrorCenter.shared.report(AppError.jobFailed(
                 jobType: job.type.displayName,
                 error: job.errorMessage ?? "未知错误",
                 details: job.stderrDetails
-            )
-            ErrorCenter.shared.report(error)
+            ))
         }
     }
 
@@ -132,18 +108,13 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    var hasOfficeBackendAvailable: Bool {
-        isOfficeAutomationAvailable
-    }
+    var hasOfficeBackendAvailable: Bool { isOfficeAutomationAvailable }
 
     func isBackendAvailable(for type: ConversionType) -> Bool {
         switch type.category {
-        case .officeToPDF, .pdfToOffice:
-            return isOfficeAutomationAvailable
-        case .ai:
-            return isDeepSeekConfigured
-        default:
-            return true
+        case .officeToPDF, .pdfToOffice: return isOfficeAutomationAvailable
+        case .ai: return isDeepSeekConfigured
+        default: return true
         }
     }
 
@@ -154,9 +125,7 @@ final class AppViewModel: ObservableObject {
         panel.allowsMultipleSelection = selectedType == .mergePDF
         panel.begin { response in
             guard response == .OK else { return }
-            Task { @MainActor in
-                self.inputURLs = panel.urls
-            }
+            Task { @MainActor in self.inputURLs = panel.urls }
         }
     }
 
@@ -171,18 +140,79 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    /// v0.4.3：enqueue 前 pre-flight 检查
+    // MARK: - v0.4.4 重置与删除功能
+
+    /// 删除单个已选文件
+    func removeInputURL(_ url: URL) {
+        inputURLs.removeAll { $0 == url }
+    }
+
+    /// 清空所有已选文件
+    func clearInputURLs() {
+        let count = inputURLs.count
+        inputURLs = []
+        if count > 0 {
+            ErrorCenter.shared.reportInfo("已清空 \(count) 个文件")
+        }
+    }
+
+    /// 清除输出文件夹选择（恢复为默认与源文件同目录）
+    func clearOutputDirectory() {
+        if outputDirectory != nil {
+            outputDirectory = nil
+            ErrorCenter.shared.reportInfo("已清除输出文件夹，将使用默认位置")
+        }
+    }
+
+    /// 重置当前转换类型的所有参数为默认值
     ///
-    /// 在任务真正提交到 JobOrchestrator 之前，先检查：
-    /// 1. 输入文件是否可读
-    /// 2. Office 转换是否有后端可用
-    /// 3. AI 转换是否已配置
+    /// 不同类型有不同的参数，所以基于 `selectedType` 决定重置哪些字段。
+    /// 这是细粒度的重置——只重置当前类型用到的参数，避免影响其他类型的设置。
+    func resetCurrentParameters() {
+        parameters = ConversionParameters()  // 全部重置为默认值
+        ErrorCenter.shared.reportInfo("已重置参数为默认值")
+    }
+
+    /// 重置整个转换面板状态：文件 + 输出目录 + 参数 + 转换类型。
     ///
-    /// 任何检查失败都会通过 ErrorCenter 推送警告横幅，不会让用户看到任务"失败"。
+    /// 这是"重头来过"按钮。任务队列不会被清空（那是历史记录）。
+    func resetConversionPanel() {
+        let hadFiles = !inputURLs.isEmpty
+        let hadOutput = outputDirectory != nil
+        inputURLs = []
+        outputDirectory = nil
+        parameters = ConversionParameters()
+        selectedType = .pdfToPNG
+        if hadFiles || hadOutput {
+            ErrorCenter.shared.reportInfo("已重置转换面板")
+        }
+    }
+
+    /// 从队列中移除单个任务（不影响磁盘上的输出文件）
+    func removeJob(id: UUID) async {
+        await JobOrchestrator.shared.removeJob(id: id)
+    }
+
+    /// 清空已完成的任务（不取消正在运行/等待的）
+    func clearCompletedJobs() async {
+        let removed = await JobOrchestrator.shared.clearCompletedJobs()
+        if removed > 0 {
+            ErrorCenter.shared.reportInfo("已清除 \(removed) 个已完成任务")
+        }
+    }
+
+    /// 清空全部任务（包括 pending/running 强制取消）
+    func clearAllJobs() async {
+        let removed = await JobOrchestrator.shared.clearAllJobs()
+        notifiedJobFailures.removeAll()
+        if removed > 0 {
+            ErrorCenter.shared.reportInfo("已清除 \(removed) 个任务")
+        }
+    }
+
     func enqueueConversion() {
         guard !inputURLs.isEmpty else { return }
 
-        // Pre-flight: Office 后端可用性
         if (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice)
             && !isOfficeAutomationAvailable {
             ErrorCenter.shared.report(AppError.missingLibreOffice())
@@ -190,13 +220,11 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        // Pre-flight: AI 配置
         if selectedType.requiresNetwork && !isDeepSeekConfigured {
             ErrorCenter.shared.report(AppError.deepSeekNotConfigured())
             return
         }
 
-        // Pre-flight: 输入文件可读性
         for url in inputURLs {
             guard FileManager.default.isReadableFile(atPath: url.path) else {
                 ErrorCenter.shared.report(AppError.fileReadFailed(
@@ -213,9 +241,7 @@ final class AppViewModel: ObservableObject {
             outputDirectory: outputDirectory,
             parameters: parameters
         )
-        Task {
-            await JobOrchestrator.shared.enqueue(job)
-        }
+        Task { await JobOrchestrator.shared.enqueue(job) }
     }
 
     func refreshJobs() async {
@@ -249,10 +275,7 @@ final class AppViewModel: ObservableObject {
             do {
                 try DeepSeekSettings.saveAPIKey(deepSeekAPIKeyInput)
             } catch {
-                ErrorCenter.shared.reportError(
-                    title: "无法保存 API Key",
-                    message: error.localizedDescription
-                )
+                ErrorCenter.shared.reportError(title: "无法保存 API Key", message: error.localizedDescription)
             }
         }
         reloadDeepSeekSettings()
@@ -262,19 +285,13 @@ final class AppViewModel: ObservableObject {
         do {
             try DeepSeekSettings.clearAPIKey()
         } catch {
-            ErrorCenter.shared.reportError(
-                title: "无法清除 API Key",
-                message: error.localizedDescription
-            )
+            ErrorCenter.shared.reportError(title: "无法清除 API Key", message: error.localizedDescription)
         }
         reloadDeepSeekSettings()
     }
 
-    func clearError() {
-        // 向后兼容：旧的 errorMessage 字段，现已废弃，统一用 ErrorCenter
-    }
+    func clearError() {}
 
-    /// v0.4.3：重试失败的任务
     func retryJob(_ job: ConversionJob) {
         let retry = ConversionJob(
             type: job.type,
@@ -282,38 +299,21 @@ final class AppViewModel: ObservableObject {
             outputDirectory: job.outputDirectory,
             parameters: job.parameters
         )
-        Task {
-            await JobOrchestrator.shared.enqueue(retry)
-        }
+        Task { await JobOrchestrator.shared.enqueue(retry) }
         ErrorCenter.shared.reportInfo("已重新提交: \(job.type.displayName)")
     }
 }
 
-// MARK: - OfficeAvailability
-
 enum OfficeAvailability {
-    static let msOfficeBundleIDs = [
-        "com.microsoft.Word",
-        "com.microsoft.Excel",
-        "com.microsoft.Powerpoint"
-    ]
-
-    static let iWorkBundleIDs = [
-        "com.apple.iWork.Pages",
-        "com.apple.iWork.Numbers",
-        "com.apple.iWork.Keynote"
-    ]
+    static let msOfficeBundleIDs = ["com.microsoft.Word", "com.microsoft.Excel", "com.microsoft.Powerpoint"]
+    static let iWorkBundleIDs = ["com.apple.iWork.Pages", "com.apple.iWork.Numbers", "com.apple.iWork.Keynote"]
 
     static func check() -> Bool {
         for bundleID in msOfficeBundleIDs {
-            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
-                return true
-            }
+            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil { return true }
         }
         for bundleID in iWorkBundleIDs {
-            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil {
-                return true
-            }
+            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil { return true }
         }
         return ToolLocator.shared.availabilityReport().first { $0.tool.name == "soffice" }?.available == true
     }
