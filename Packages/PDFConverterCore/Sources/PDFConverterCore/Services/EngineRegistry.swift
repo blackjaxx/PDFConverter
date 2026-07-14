@@ -34,7 +34,7 @@ public final class EngineRegistry: @unchecked Sendable {
             PopplerEngine(),
             QpdfEngine(),
             GhostscriptEngine(),
-            LibreOfficeEngine(),
+            OfficeAutomationEngine(),
             TesseractEngine()
         ]
         self.engines = list

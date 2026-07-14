@@ -20,6 +20,8 @@ public enum EngineKind: String, CaseIterable, Codable, Sendable {
     case ghostscript
     /// LibreOffice headless 模式，处理 Office 文档与 PDF 的互转
     case libreOffice
+    /// 智能 Office 自动化引擎，链式降级：Microsoft Office → Apple iWork → LibreOffice
+    case officeAutomation
     /// Tesseract OCR 引擎，将图片 PDF 转为可搜索 PDF
     case tesseract
     /// WebKit，用于 HTML 到 PDF 的转换

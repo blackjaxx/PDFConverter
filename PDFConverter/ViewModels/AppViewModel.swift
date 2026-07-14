@@ -58,7 +58,7 @@ final class AppViewModel: ObservableObject {
             PopplerEngine(),
             QpdfEngine(),
             GhostscriptEngine(),
-            LibreOfficeEngine(),
+            OfficeAutomationEngine(),
             TesseractEngine(),
             AppWebKitEngine(),
             AppLLMEngine()
@@ -76,8 +76,8 @@ final class AppViewModel: ObservableObject {
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
 
-        // 如果 LibreOffice 不可用但当前选中的是 Office 转换类型，重置为默认类型
-        if !isLibreOfficeAvailable && (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice) {
+        // 如果 Office 自动化不可用但当前选中的是 Office 转换类型，重置为默认类型
+        if !isOfficeAutomationAvailable && (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice) {
             selectedType = .pdfToPNG
         }
 
@@ -90,7 +90,7 @@ final class AppViewModel: ObservableObject {
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
         let types = ConversionType.allCases
         return ConversionCategory.allCases.compactMap { cat in
-            if !isLibreOfficeAvailable {
+            if !isOfficeAutomationAvailable {
                 if cat == .officeToPDF || cat == .pdfToOffice {
                     return nil
                 }
@@ -100,10 +100,22 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    /// 检查 LibreOffice（soffice）是否可用。
-    /// 由于 LibreOffice 依赖庞大，DMG 中不捆绑，需要用户自行安装。
-    var isLibreOfficeAvailable: Bool {
-        toolReport.first { $0.tool.name == "soffice" }?.available ?? false
+    /// 检查是否有任何 Office 转换后端可用（优先级：Microsoft Office > Apple iWork > LibreOffice）。
+    ///
+    /// 引擎 ``OfficeAutomationEngine`` 会自动按优先级降级尝试，此处只判断
+    /// 是否至少有一个后端可用。如果全部不可用，Office 分类在 UI 中会被隐藏。
+    var isOfficeAutomationAvailable: Bool {
+        // Microsoft Office (通过 Bundle ID)
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.Word") != nil { return true }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.Excel") != nil { return true }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.Powerpoint") != nil { return true }
+        // Apple iWork
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iWork.Pages") != nil { return true }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iWork.Numbers") != nil { return true }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iWork.Keynote") != nil { return true }
+        // LibreOffice (通过 soffice 工具检测)
+        if toolReport.first(where: { $0.tool.name == "soffice" })?.available == true { return true }
+        return false
     }
 
     /// 使用 `NSOpenPanel` 打开系统文件选择对话框。

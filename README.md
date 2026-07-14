@@ -24,9 +24,10 @@
 ### 本地构建
 
 ```bash
-# 1. 安装开发依赖（LibreOffice 为可选，Office 文档转换需要）
+# 1. 安装开发依赖
 brew install poppler qpdf ghostscript tesseract
-# 可选：Office 文档转换（Word/Excel/PPT）
+# （可选）Office 文档转换需要 LibreOffice，但 OfficeAutomationEngine
+# 会优先尝试系统已有的 Microsoft Office 或 Apple iWork
 brew install libreoffice
 
 # 2. 打开项目
@@ -47,8 +48,8 @@ cd Packages/PDFConverterCore && swift test
 | PDF → 图片 | PNG / JPEG / TIFF | Poppler（pdftoppm） |
 | 图片 → PDF | PNG / JPEG → PDF | PDFKit（系统原生） |
 | PDF → 文本 | 纯文本提取 | Poppler（pdftotext） |
-| Office → PDF | Word / Excel / PPT | LibreOffice（headless，需系统安装） |
-| PDF → Office | Word / Excel | LibreOffice（headless，需系统安装） |
+| Office → PDF | Word / Excel / PPT | 智能降级：Microsoft Office → Apple iWork → LibreOffice |
+| PDF → Office | Word / Excel | 智能降级：Microsoft Office → Apple iWork → LibreOffice |
 | HTML → PDF | 网页转 PDF | WebKit（WKWebView） |
 | 页面操作 | 合并 / 拆分 / 旋转 | PDFKit + qpdf |
 | 优化 | PDF 压缩 | Ghostscript |
@@ -135,6 +136,16 @@ protocol ConversionEngine {
 
 `ProcessRunner` 使用 `readabilityHandler` 实时读取子进程的 stdout/stderr 管道数据，防止大型输出（>64KB）时管道缓冲区溢出导致进程死锁。
 
+### 6. 链式降级引擎（OfficeAutomationEngine）
+
+`OfficeAutomationEngine` 利用 macOS 原生 AppleScript 能力，实现无需捆绑大体积工具的 Office 文档转换：
+
+```
+Microsoft Office (AppleScript) → Apple iWork (AppleScript) → LibreOffice (headless)
+```
+
+每个后端都独立检测可用性，上游失败时自动降级。这种模式避免了将 ~1.2GB 的 LibreOffice 打包进应用 DMG，同时让装了 Office 或 iWork 的用户获得零额外安装的体验。
+
 ## 代码导航（初学者指南）
 
 阅读本项目代码时，建议按以下顺序：
@@ -197,4 +208,4 @@ git push origin v0.2.6
 
 本项目采用 [MIT License](LICENSE) 发布，供学习、研究与二次开发使用。
 
-捆绑的 Poppler、qpdf、Ghostscript、Tesseract 等第三方工具请遵循其各自的开源协议。LibreOffice 不包含在 DMG 中，需要用户自行安装。
+捆绑的 Poppler、qpdf、Ghostscript、Tesseract 等第三方工具请遵循其各自的开源协议。LibreOffice 不包含在 DMG 中；Office 转换引擎会优先尝试系统已有的 Microsoft Office 或 Apple iWork，仅当两者都不可用时才提示安装 LibreOffice。
