@@ -68,6 +68,39 @@ public actor JobOrchestrator {
         }
     }
 
+    /// 从内存中移除单个任务（不删除磁盘文件）。
+    public func removeJob(id: UUID) {
+        jobsByID.removeValue(forKey: id)
+        queue.removeAll { $0.id == id }
+        runningTasks[id] = nil
+        broadcastUpdate()
+    }
+
+    /// 清空所有已完成（completed/failed/cancelled）的任务。
+    @discardableResult
+    public func clearCompletedJobs() -> Int {
+        let toRemove = jobsByID.values.filter {
+            $0.status == .completed || $0.status == .failed || $0.status == .cancelled
+        }
+        for job in toRemove {
+            jobsByID.removeValue(forKey: job.id)
+        }
+        broadcastUpdate()
+        return toRemove.count
+    }
+
+    /// 清空全部任务（包括强制取消 pending/running）。
+    @discardableResult
+    public func clearAllJobs() -> Int {
+        runningTasks.removeAll()
+        running = 0
+        let count = jobsByID.count
+        jobsByID.removeAll()
+        queue.removeAll()
+        broadcastUpdate()
+        return count
+    }
+
     public func updateProgress(id: UUID, progress: Double) {
         guard var job = jobsByID[id], job.status == .running else { return }
         let clamped = max(0.0, min(1.0, progress))
