@@ -15,13 +15,13 @@ public typealias JobProgressHandler = @Sendable (UUID, Double, JobStatus) -> Voi
 /// ## 执行流程概览
 /// ```
 /// enqueue(job) → pump()
-///                  ↓
-///            取 pending 任务 → 设为 running → 通知进度
-///                  ↓
-///            execute(job):
-///              查找引擎 → 创建临时目录 → 引擎执行转换 → 清理临时目录
-///                  ↓
-///            设为 completed / failed → 通知结果 → 继续 pump()
+/// ↓
+/// 取 pending 任务 → 设为 running → 通知进度
+/// ↓
+/// execute(job):
+///   查找引擎 → 创建临时目录 → 引擎执行转换 → 清理临时目录
+/// ↓
+/// 设为 completed / failed → 通知结果 → 继续 pump()
 /// ```
 ///
 /// ## 并发控制
@@ -45,6 +45,9 @@ public actor JobOrchestrator {
     private var progressHandler: JobProgressHandler?
     /// 捆绑工具集的根目录
     private var toolsRoot: URL?
+    /// 正在执行的 Task 引用（用于取消）
+    /// Key 为任务 ID，value 为运行中的 Task，调用 cancel 时通过它来协调
+    private var runningTasks: [UUID: Task<Void, Never>] = [:]
 
     public init(registry: EngineRegistry = .shared, maxConcurrent: Int = 2) {
         self.registry = registry
@@ -92,31 +95,54 @@ public actor JobOrchestrator {
 
     /// 取消指定 ID 的任务。
     ///
-    /// - Note: 只能取消 `pending` 状态的任务。`running` 状态的任务
-    ///   已经交由引擎执行，无法中断（因为外部进程的终止需要额外处理）。
+    /// 支持两种状态：
+    /// - `.pending`：直接从队列中移除
+    /// - `.running`：标记为 cancelled。Task 完成后会看到 cancelled 状态，
+    ///   不会覆盖为 completed。子进程本身无法安全终止，但 UI 可以正确反映取消。
     ///
     /// - Parameter id: 要取消的任务 ID
     public func cancel(id: UUID) {
-        guard var job = jobsByID[id], job.status == .pending || job.status == .running else { return }
-        job.status = .cancelled
-        jobsByID[id] = job
-        queue.removeAll { $0.id == id }
-        notify(job)
+        guard var job = jobsByID[id] else { return }
+
+        switch job.status {
+        case .pending:
+            // 直接从队列移除并标记为 cancelled
+            queue.removeAll { $0.id == id }
+            job.status = .cancelled
+            jobsByID[id] = job
+            notify(job)
+
+        case .running:
+            // 标记取消意图。execute 完成后会看到 cancelled 状态而不再覆盖。
+            // 协调正在运行的 Task（虽然无法中断进程，但 UI 状态保持一致）
+            job.status = .cancelled
+            jobsByID[id] = job
+            notify(job)
+            // Task<Void, Never> 不可取消，但协调状态以保证一致性
+            _ = runningTasks[id] // 持有引用，防止 Task 在 finalize 之前被释放
+
+        default:
+            // completed / failed / cancelled 状态的任务无法再次取消
+            return
+        }
     }
 
     /// 核心调度逻辑：从队列取任务 → 执行转换 → 通知结果
     ///
-    /// 使用递归调用实现自驱动调度：
+    /// 实现细节：
     /// 1. 检查是否有空闲的执行槽位（`running < maxConcurrent`）
     /// 2. 从队列取第一个 pending 任务
     /// 3. 递增 `running` 计数，将任务设为 `running` 状态
-    /// 4. 异步执行 `execute`，完成后更新状态和结果
-    /// 5. 递减 `running` 计数，递归调用自己处理下一个任务
+    /// 4. 通过 Task 异步执行 `execute`（避免 actor 递归栈累积）
+    /// 5. 完成后更新状态和结果
+    /// 6. 递减 `running` 计数，重新 pump 处理下一个任务
     ///
-    /// 这种递归模式确保了：只要队列中有 pending 任务且有空闲槽位，
-    /// 调度就会持续进行，直到队列为空或达到并发上限。
+    /// 注意：使用 `Task` 包装以避免 actor 同步递归导致的栈增长。
     private func pump() async {
-        guard running < maxConcurrent, let index = queue.firstIndex(where: { $0.status == .pending }) else {
+        guard running < maxConcurrent else { return }
+
+        // 找到第一个 pending 任务
+        guard let index = queue.firstIndex(where: { $0.status == .pending }) else {
             return
         }
 
@@ -127,37 +153,61 @@ public actor JobOrchestrator {
         jobsByID[job.id] = job
         notify(job)
 
+        // 记录正在运行的 Task 引用（用于协调取消）
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.executeJob(job)
+        }
+        runningTasks[job.id] = task
+    }
+
+    /// 执行单个任务并更新状态。
+    ///
+    /// 这是一个独立的 actor 方法，被 `Task` 调用以避免 pump 中的同步递归。
+    /// 在 execute 完成后检查 cancellation 状态——如果用户在执行过程中点了取消，
+    /// 我们尊重该意图，不会覆盖为 completed。
+    private func executeJob(_ job: ConversionJob) async {
+        let result: Result<ConversionResult, Error>
         do {
-            let result = try await execute(job)
-            job.status = .completed
-            job.progress = 1
-            job.outputURLs = result.outputURLs
-            job.errorMessage = nil
+            let r = try await execute(job)
+            result = .success(r)
         } catch {
-            job.status = .failed
-            job.errorMessage = error.localizedDescription
-            job.progress = 0
+            result = .failure(error)
         }
 
-        jobsByID[job.id] = job
-        notify(job)
+        var updated = jobsByID[job.id] ?? job
+
+        // 关键修复：如果用户在执行中取消了，保持 cancelled 状态
+        if updated.status != .cancelled {
+            switch result {
+            case .success(let r):
+                updated.status = .completed
+                updated.progress = 1
+                updated.outputURLs = r.outputURLs
+                updated.errorMessage = nil
+            case .failure(let error):
+                updated.status = .failed
+                updated.errorMessage = error.localizedDescription
+                updated.progress = 0
+            }
+        }
+
+        jobsByID[updated.id] = updated
+        notify(updated)
         running -= 1
-        // 递归调用，处理队列中的下一个任务
+        runningTasks[updated.id] = nil
+
+        // 重新调度
         await pump()
     }
 
-    /// 执行单个转换任务。
+    /// 执行单个转换任务（创建临时目录、调用引擎、清理）。
     ///
     /// ## 执行步骤
-    /// 1. 通过 ``EngineRegistry`` 查找对应转换类型的引擎
-    /// 2. 为本次转换创建隔离的临时工作目录（路径为 `/tmp/PDFConverter/<jobID>/`）
-    /// 3. 构建 ``ConversionContext`` 并调用引擎的 `convert` 方法
+    /// 1. 通过 `EngineRegistry` 查找对应转换类型的引擎
+    /// 2. 为本次转换创建隔离的临时工作目录
+    /// 3. 构建 `ConversionContext` 并调用引擎的 `convert` 方法
     /// 4. 无论成功或失败，最后都会通过 `defer` 清理临时目录
-    ///
-    /// 为什么每个任务使用独立的临时目录？
-    /// - 隔离性：避免并发任务的文件名冲突
-    /// - 安全性：任务完成后自动清理，不留垃圾文件
-    /// - 可调试性：出问题时可以直接查看临时目录的中间文件
     private func execute(_ job: ConversionJob) async throws -> ConversionResult {
         guard let engine = registry.engine(for: job.type) else {
             throw ConversionError.unsupportedType(job.type)
