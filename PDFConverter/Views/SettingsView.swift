@@ -1,22 +1,19 @@
 import SwiftUI
 import PDFConverterCore
+import AppKit
 
-/// 偏好设置窗口（macOS 的 `Cmd+,` 菜单），包含：
-/// 1. **DeepSeek AI 配置**：API Key、BaseURL、模型名称
-/// 2. **离线工具链状态**：显示各 CLI 工具的可用性
-/// 3. **分发信息**：渠道和沙盒状态
-/// 4. **关于**：版本信息
+/// 偏好设置窗口。
 ///
-/// 使用 `Form` + `.formStyle(.grouped)` 获得 macOS 原生设置面板外观。
+/// v0.4.5 新增「日志」区域：可在 App 内查看最近 500 条应用日志，
+/// 无需打开 Console.app。
 struct SettingsView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @ObservedObject private var logStore = LogStore.shared
+    @State private var showLogs = false
 
     var body: some View {
         Form {
-            // DeepSeek 配置区域：
-            // - API Key 保存在系统 Keychain 中（最安全的方式）
-            // - BaseURL 和模型名保存在 UserDefaults 中
-            // - SecureField 用于隐藏 API Key 输入
+            // DeepSeek 配置
             Section {
                 Link("获取 API Key", destination: URL(string: "https://platform.deepseek.com/api_keys")!)
                 TextField("API Base URL", text: $viewModel.deepSeekBaseURL)
@@ -43,7 +40,7 @@ struct SettingsView: View {
                 Text("DeepSeek（云端 AI）")
             }
 
-            // 离线工具链区域（用 header: 显式形式避免 Xcode 15 下误识别为 TableSection）
+            // 离线工具链
             Section {
                 Text("应用从 `Contents/Resources/tools` 加载 CLI，也可回退到系统 PATH（Homebrew 等）。")
                     .font(.caption)
@@ -79,8 +76,26 @@ struct SettingsView: View {
                 Text("离线工具链")
             }
 
-            // 分发信息：说明应用通过直接分发（非 Mac App Store）和沙盒已关闭，
-            // 这意味着应用可以调用 Bundle 内的 CLI 工具，不受沙盒限制。
+            // v0.4.5：日志查看器入口
+            Section {
+                HStack {
+                    Text("已记录 \(logStore.entries.count) 条日志")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("查看日志") {
+                        showLogs = true
+                    }
+                    Button("打开 Console.app") {
+                        AppLogger.shared.revealLogFileInFinder()
+                    }
+                    .help("macOS 统一日志系统，可按 subsystem: com.local.pdfconverter 过滤")
+                }
+            } header: {
+                Text("调试日志")
+            }
+
+            // 分发信息
             Section {
                 LabeledContent("渠道", value: "直接分发（非 Mac App Store）")
                 LabeledContent("沙盒", value: "已关闭，可调用捆绑 CLI")
@@ -95,6 +110,160 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 520)
+        .frame(width: 520, height: 560)
+        .sheet(isPresented: $showLogs) {
+            LogViewerSheet(isPresented: $showLogs)
+        }
+    }
+}
+
+/// 日志查看器 Sheet。
+struct LogViewerSheet: View {
+    @Binding var isPresented: Bool
+    @ObservedObject private var logStore = LogStore.shared
+    @State private var filterLevel: AppLogger.LogEntry.LogLevel? = nil
+    @State private var searchText: String = ""
+
+    var filteredEntries: [AppLogger.LogEntry] {
+        logStore.entries.filter { entry in
+            // 过滤级别
+            if let level = filterLevel, entry.level != level { return false }
+            // 搜索关键字
+            if !searchText.isEmpty {
+                let inMessage = entry.message.localizedCaseInsensitiveContains(searchText)
+                let inMetadata = entry.metadata.values.contains { $0.localizedCaseInsensitiveContains(searchText) }
+                if !inMessage && !inMetadata { return false }
+            }
+            return true
+        }.reversed() // 最新的在最上面
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("应用日志（最近 \(logStore.entries.count) 条）")
+                    .font(.headline)
+                Spacer()
+                Picker("", selection: $filterLevel) {
+                    Text("全部").tag(AppLogger.LogEntry.LogLevel?.none)
+                    Text("🔵 Info").tag(AppLogger.LogEntry.LogLevel?.some(.info))
+                    Text("🟠 Warning").tag(AppLogger.LogEntry.LogLevel?.some(.warning))
+                    Text("🔴 Error").tag(AppLogger.LogEntry.LogLevel?.some(.error))
+                    Text("⚫ Debug").tag(AppLogger.LogEntry.LogLevel?.some(.debug))
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
+            }
+            .padding()
+
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("搜索消息或元数据...", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if filteredEntries.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.largeTitle)
+                                .foregroundStyle(.secondary)
+                            Text(searchText.isEmpty ? "暂无日志" : "无匹配日志")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(40)
+                    } else {
+                        ForEach(filteredEntries) { entry in
+                            LogRow(entry: entry)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 500)
+
+            Divider()
+
+            HStack {
+                Button("清空缓冲区") {
+                    logStore.clear()
+                }
+                Button("复制全部到剪贴板") {
+                    let text = AppLogger.shared.exportAsString()
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }
+                Spacer()
+                Button("关闭") { isPresented = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(width: 800, height: 700)
+    }
+}
+
+/// 单条日志行
+struct LogRow: View {
+    let entry: AppLogger.LogEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(entry.timestamp.formatted(date: .omitted, time: .standard))
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 70, alignment: .leading)
+                Text(entry.level.rawValue.uppercased())
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(levelColor(entry.level))
+                    .frame(width: 60, alignment: .leading)
+                Text(entry.message)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !entry.metadata.isEmpty {
+                HStack {
+                    Spacer().frame(width: 70 + 60 + 16)
+                    Text(entry.metadata.map { "\($0.key): \($0.value)" }.joined(separator: " · "))
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(Color.gray.opacity(0.04))
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundStyle(Color.gray.opacity(0.1)),
+            alignment: .bottom
+        )
+    }
+
+    private func levelColor(_ level: AppLogger.LogEntry.LogLevel) -> Color {
+        switch level {
+        case .debug: return .secondary
+        case .info: return .blue
+        case .warning: return .orange
+        case .error: return .red
+        }
     }
 }
