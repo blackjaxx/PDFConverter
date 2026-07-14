@@ -32,26 +32,21 @@ public enum JobStatus: String, Codable, Sendable {
 /// - 实现 `Identifiable`（通过 `UUID`），方便 SwiftUI 的 `ForEach` 和列表渲染
 /// - 实现 `Codable`，支持任务序列化和持久化（例如保存历史记录到磁盘）
 /// - 采用值类型（`struct`）而非引用类型，配合 ``JobOrchestrator``（`actor`）保证并发安全
+///
+/// v0.4.3 新增 `stderrDetails` 字段，用于存储完整错误详情（stdout/stderr），
+/// 与 `errorMessage`（短描述）区分。UI 可以展开查看完整详情。
 public struct ConversionJob: Identifiable, Codable, Sendable {
-    /// 任务的唯一标识，使用 UUID 保证全局唯一
     public let id: UUID
-    /// 要执行的转换类型，决定了由哪个引擎处理
     public var type: ConversionType
-    /// 输入文件列表，大多数转换只需要一个文件，合并等操作需要多个
     public var inputURLs: [URL]
-    /// 用户指定的输出目录（可选），为空时输出到输入文件所在目录
     public var outputDirectory: URL?
-    /// 转换参数，包括 DPI、质量、页码范围、密码等
     public var parameters: ConversionParameters
-    /// 当前任务状态
     public var status: JobStatus
-    /// 执行进度（0.0 ~ 1.0），用于 UI 进度条展示
     public var progress: Double
-    /// 任务完成后生成的输出文件 URL 列表
     public var outputURLs: [URL]
-    /// 任务失败时的错误描述
     public var errorMessage: String?
-    /// 任务创建时间戳，用于按时间排序展示历史记录
+    /// v0.4.3：完整错误详情（包含 stdout/stderr 等技术信息）
+    public var stderrDetails: String?
     public let createdAt: Date
 
     public init(
@@ -64,6 +59,7 @@ public struct ConversionJob: Identifiable, Codable, Sendable {
         progress: Double = 0,
         outputURLs: [URL] = [],
         errorMessage: String? = nil,
+        stderrDetails: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -75,6 +71,7 @@ public struct ConversionJob: Identifiable, Codable, Sendable {
         self.progress = progress
         self.outputURLs = outputURLs
         self.errorMessage = errorMessage
+        self.stderrDetails = stderrDetails
         self.createdAt = createdAt
     }
 }
