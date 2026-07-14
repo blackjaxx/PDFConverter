@@ -25,11 +25,34 @@ struct ConversionOptionsView: View {
                     Text("可选页范围在后续版本提供")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                // Office 文档与 PDF 互转：使用内置 LibreOffice（headless 模式，无 GUI）
+                // Office 文档与 PDF 互转：使用智能降级引擎
+                // 优先级：Microsoft Office → Apple iWork → LibreOffice (headless)
                 case .officeToPDF, .pdfToOffice:
-                    Text("使用内置 LibreOffice（headless）")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if viewModel.isBackendAvailable(for: viewModel.selectedType) {
+                        Text("智能降级：Microsoft Office → Apple iWork → LibreOffice")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        // 后端全部不可用，显示安装指引
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("未检测到 Office 转换后端", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.bold())
+                                .foregroundStyle(.orange)
+                            Text("按以下任一方式安装即可启用：")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("• Microsoft Office 365（推荐）")
+                                Text("• Apple iWork（Pages/Numbers/Keynote）")
+                                Text("• LibreOffice（免费，约 300MB）：brew install --cask libreoffice")
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.1)))
+                    }
                 // 压缩：提供 Ghostscript 的四种预设档位
                 case .compress:
                     Picker("压缩档位", selection: $viewModel.parameters.compressionLevel) {
