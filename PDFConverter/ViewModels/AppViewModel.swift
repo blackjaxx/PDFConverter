@@ -97,17 +97,30 @@ final class AppViewModel: ObservableObject {
     /// 将转换类型按 `ConversionCategory` 分组，供侧边栏使用。
     /// 例如 `.pdfToImage` 分类下有 `.pdfToPNG`、`.pdfToJPEG` 等具体类型。
     /// 如果 Office 后端不可用，则隐藏 `.officeToPDF` 和 `.pdfToOffice` 分类。
+    /// 将转换类型按 `ConversionCategory` 分组，供侧边栏使用。
+    /// 例如 `.pdfToImage` 分类下有 `.pdfToPNG`、`.pdfToJPEG` 等具体类型。
+    ///
+    /// 关键行为变更（v0.4.1）：Office 分类现在**始终显示**，即使所有 Office
+    /// 后端都不可用。原因：
+    /// - 旧行为会在没有任何 Office 后端时隐藏整个分类，用户根本不知道有这功能
+    /// - 新行为：分类始终可见，侧边栏内每个 Office 类型会显示「需安装」徽章
+    /// - 用户点击后可在设置中查看如何安装（或由 `officeAvailabilityStatus` 引导）
+    ///
+    /// 这种设计更符合「告知用户能做什么」的可用性原则——而不只是隐藏不可用项。
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
         let types = ConversionType.allCases
         return ConversionCategory.allCases.compactMap { cat in
-            if !isOfficeAutomationAvailable {
-                if cat == .officeToPDF || cat == .pdfToOffice {
-                    return nil
-                }
-            }
             let items = types.filter { $0.category == cat }
             return items.isEmpty ? nil : (cat, items)
         }
+    }
+
+    /// Office 分类在当前环境下是否可执行实际转换。
+    ///
+    /// 用于 SidebarView 显示「需安装」徽章和 SettingsView 中显示安装指引。
+    /// 不会影响分类的显示与否——分类永远显示，只是徽章反映当前可用性。
+    var hasOfficeBackendAvailable: Bool {
+        isOfficeAutomationAvailable
     }
 
     /// 使用 `NSOpenPanel` 打开系统文件选择对话框。
