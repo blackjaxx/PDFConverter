@@ -1,7 +1,9 @@
 import Foundation
 
 /// 任务进度回调类型：`(任务ID, 当前进度 0~1, 当前状态) -> Void`
-public typealias JobProgressHandler = @Sendable (UUID, Double, JobStatus) -> Void
+///
+/// 必须在 MainActor 上执行（因为 UI 更新必须在主线程）。
+public typealias JobProgressHandler = @MainActor @Sendable (UUID, Double, JobStatus) -> Void
 
 /// 任务编排器，管理任务队列和并发执行。
 ///
@@ -27,6 +29,13 @@ public typealias JobProgressHandler = @Sendable (UUID, Double, JobStatus) -> Voi
 /// ## 并发控制
 /// `maxConcurrent` 参数限制了同时执行的任务数量（默认 2），
 /// 防止同时启动过多外部进程导致系统资源耗尽。
+///
+/// ## 进度通知
+/// 通过 `progressHandler` 回调通知 UI 层任务状态变更。
+/// 关键修复（v0.4.2）：
+/// - 回调标注为 `@MainActor @Sendable`，保证在主线程上调用
+/// - 提供 `updateProgress(_:progress:)` 让引擎在转换过程中更新进度
+/// - 提供 `observeJobs()` AsyncStream，UI 可以订阅状态变化而不需要定时器轮询
 public actor JobOrchestrator {
     /// 全局共享实例
     public static let shared = JobOrchestrator()
@@ -46,8 +55,10 @@ public actor JobOrchestrator {
     /// 捆绑工具集的根目录
     private var toolsRoot: URL?
     /// 正在执行的 Task 引用（用于取消）
-    /// Key 为任务 ID，value 为运行中的 Task，调用 cancel 时通过它来协调
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
+    /// 状态变更观察者列表（AsyncStream continuations）
+    /// UI 可以订阅这些流来接收任务状态变化，避免定时器轮询
+    private var observers: [UUID: AsyncStream<[ConversionJob]>.Continuation] = [:]
 
     public init(registry: EngineRegistry = .shared, maxConcurrent: Int = 2) {
         self.registry = registry
@@ -61,7 +72,7 @@ public actor JobOrchestrator {
     /// - Parameters:
     ///   - toolsRoot: App Bundle 中工具集的根目录（通常是 `Resources/tools`）
     ///   - registry: 可选的引擎注册表，不传则使用当前已注册的引擎
-    ///   - progressHandler: UI 层的进度回调
+    ///   - progressHandler: UI 层的进度回调（在主线程上调用）
     public func configure(
         toolsRoot: URL?,
         registry: EngineRegistry? = nil,
@@ -84,6 +95,7 @@ public actor JobOrchestrator {
         j.status = .pending
         jobsByID[j.id] = j
         queue.append(j)
+        broadcastUpdate()
         // 异步触发调度，不阻塞调用方
         Task { await pump() }
     }
@@ -111,15 +123,15 @@ public actor JobOrchestrator {
             job.status = .cancelled
             jobsByID[id] = job
             notify(job)
+            broadcastUpdate()
 
         case .running:
             // 标记取消意图。execute 完成后会看到 cancelled 状态而不再覆盖。
-            // 协调正在运行的 Task（虽然无法中断进程，但 UI 状态保持一致）
             job.status = .cancelled
             jobsByID[id] = job
             notify(job)
-            // Task<Void, Never> 不可取消，但协调状态以保证一致性
-            _ = runningTasks[id] // 持有引用，防止 Task 在 finalize 之前被释放
+            broadcastUpdate()
+            _ = runningTasks[id]
 
         default:
             // completed / failed / cancelled 状态的任务无法再次取消
@@ -127,21 +139,29 @@ public actor JobOrchestrator {
         }
     }
 
+    /// 更新某个任务的进度（供引擎在转换过程中调用）。
+    ///
+    /// 例如 PDF 转 PNG 这种多页转换，引擎每完成一页可以调用此方法更新进度。
+    ///
+    /// - Parameters:
+    ///   - id: 任务 ID
+    ///   - progress: 新的进度值（0.0 ~ 1.0）
+    public func updateProgress(id: UUID, progress: Double) {
+        guard var job = jobsByID[id], job.status == .running else { return }
+        let clamped = max(0.0, min(1.0, progress))
+        // 进度只能递增（不能倒退）
+        if clamped > job.progress {
+            job.progress = clamped
+            jobsByID[id] = job
+            notify(job)
+            broadcastUpdate()
+        }
+    }
+
     /// 核心调度逻辑：从队列取任务 → 执行转换 → 通知结果
-    ///
-    /// 实现细节：
-    /// 1. 检查是否有空闲的执行槽位（`running < maxConcurrent`）
-    /// 2. 从队列取第一个 pending 任务
-    /// 3. 递增 `running` 计数，将任务设为 `running` 状态
-    /// 4. 通过 Task 异步执行 `execute`（避免 actor 递归栈累积）
-    /// 5. 完成后更新状态和结果
-    /// 6. 递减 `running` 计数，重新 pump 处理下一个任务
-    ///
-    /// 注意：使用 `Task` 包装以避免 actor 同步递归导致的栈增长。
     private func pump() async {
         guard running < maxConcurrent else { return }
 
-        // 找到第一个 pending 任务
         guard let index = queue.firstIndex(where: { $0.status == .pending }) else {
             return
         }
@@ -152,10 +172,9 @@ public actor JobOrchestrator {
         job.progress = 0.05
         jobsByID[job.id] = job
         notify(job)
+        broadcastUpdate()
 
-        // 记录正在运行的 Task 引用（用于协调取消）
-        // 关键修复：将 job 作为 let 捕获，避免 Swift 6 并发模式下
-        // 捕获 var 到并发闭包的编译错误
+        // 修复：将 job 作为 let 捕获，避免 Swift 6 并发模式下编译错误
         let jobCopy = job
         let task = Task { [weak self] in
             guard let self else { return }
@@ -166,7 +185,6 @@ public actor JobOrchestrator {
 
     /// 执行单个任务并更新状态。
     ///
-    /// 这是一个独立的 actor 方法，被 `Task` 调用以避免 pump 中的同步递归。
     /// 在 execute 完成后检查 cancellation 状态——如果用户在执行过程中点了取消，
     /// 我们尊重该意图，不会覆盖为 completed。
     private func executeJob(_ job: ConversionJob) async {
@@ -197,20 +215,14 @@ public actor JobOrchestrator {
 
         jobsByID[updated.id] = updated
         notify(updated)
+        broadcastUpdate()
         running -= 1
         runningTasks[updated.id] = nil
 
-        // 重新调度
         await pump()
     }
 
     /// 执行单个转换任务（创建临时目录、调用引擎、清理）。
-    ///
-    /// ## 执行步骤
-    /// 1. 通过 `EngineRegistry` 查找对应转换类型的引擎
-    /// 2. 为本次转换创建隔离的临时工作目录
-    /// 3. 构建 `ConversionContext` 并调用引擎的 `convert` 方法
-    /// 4. 无论成功或失败，最后都会通过 `defer` 清理临时目录
     private func execute(_ job: ConversionJob) async throws -> ConversionResult {
         guard let engine = registry.engine(for: job.type) else {
             throw ConversionError.unsupportedType(job.type)
@@ -222,7 +234,6 @@ public actor JobOrchestrator {
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
 
         defer {
-            // 无论转换成功与否，都清理临时目录
             try? FileManager.default.removeItem(at: workDir)
         }
 
@@ -230,8 +241,55 @@ public actor JobOrchestrator {
         return try await engine.convert(context: context)
     }
 
-    /// 通过进度回调通知 UI 层任务状态变更。
+    /// 通过进度回调通知 UI 层任务状态变更（在主线程上执行）。
     private func notify(_ job: ConversionJob) {
-        progressHandler?(job.id, job.progress, job.status)
+        guard let handler = progressHandler else { return }
+        // 进度回调必须在主线程上调用（@MainActor）
+        Task { @MainActor in
+            handler(job.id, job.progress, job.status)
+        }
+    }
+
+    // MARK: - 观察者模式（v0.4.2 新增）
+
+    /// 订阅任务状态变化，返回 AsyncStream。
+    ///
+    /// UI 层可以用 `.task` modifier 订阅这个流，无需定时器轮询：
+    /// ```swift
+    /// .task {
+    ///     for await jobs in orchestrator.observeJobs() {
+    ///         self.jobs = jobs
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - Returns: 每次状态变化时推送最新任务列表的 AsyncStream
+    public func observeJobs() -> AsyncStream<[ConversionJob]> {
+        AsyncStream { continuation in
+            // 注册观察者
+            let observerID = UUID()
+            self.observers[observerID] = continuation
+
+            // 立即推送当前状态
+            continuation.yield(allJobs())
+
+            // 当流被取消时移除观察者
+            continuation.onTermination = { @Sendable _ in
+                Task { await self.removeObserver(id: observerID) }
+            }
+        }
+    }
+
+    /// 移除观察者（内部使用）
+    private func removeObserver(id: UUID) {
+        observers.removeValue(forKey: id)
+    }
+
+    /// 通知所有观察者状态变化
+    private func broadcastUpdate() {
+        let snapshot = allJobs()
+        for continuation in observers.values {
+            continuation.yield(snapshot)
+        }
     }
 }
