@@ -1,7 +1,9 @@
 import SwiftUI
 import PDFConverterCore
 
-/// 任务队列视图。
+/// v0.4.4：任务队列添加批量操作
+/// - 顶部右上角添加菜单按钮（清空已完成 / 清空全部）
+/// - 每个失败任务可点击展开 + 重试 + 查看完整错误
 struct JobQueueView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
@@ -11,13 +13,31 @@ struct JobQueueView: View {
                 Text("任务队列")
                     .font(.headline)
                 Spacer()
-                Button {
-                    Task { await viewModel.refreshJobs() }
+
+                // 批量操作菜单
+                Menu {
+                    Button("清空已完成") {
+                        Task { await viewModel.clearCompletedJobs() }
+                    }
+                    .disabled(!hasCompletedJobs)
+
+                    Button("清空全部（含运行中）", role: .destructive) {
+                        Task { await viewModel.clearAllJobs() }
+                    }
+                    .disabled(viewModel.jobs.isEmpty)
+
+                    Divider()
+
+                    Button("刷新") {
+                        Task { await viewModel.refreshJobs() }
+                    }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    Image(systemName: "ellipsis.circle")
                 }
-                .buttonStyle(.borderless)
-                .help("刷新任务列表")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 24)
+                .help("批量操作")
             }
             .padding()
 
@@ -41,14 +61,13 @@ struct JobQueueView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
+
+    /// 是否有已完成/失败/取消的任务
+    private var hasCompletedJobs: Bool {
+        viewModel.jobs.contains { $0.status == .completed || $0.status == .failed || $0.status == .cancelled }
+    }
 }
 
-/// 单个任务行。
-///
-/// v0.4.3 升级：
-/// - 失败任务可点击展开查看完整错误（不再限制 3 行）
-/// - 状态徽章和进度条颜色区分更清晰
-/// - 添加「在 Finder 中显示」快捷按钮
 struct JobRowView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     let job: ConversionJob
@@ -62,6 +81,20 @@ struct JobRowView: View {
                     .font(.subheadline.bold())
                 Spacer()
                 statusBadge
+                // 添加单条删除按钮（已完成的任务可删除）
+                if job.status == .completed || job.status == .failed || job.status == .cancelled {
+                    Button {
+                        Task {
+                            await viewModel.removeJob(id: job.id)
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("从列表移除（不影响磁盘文件）")
+                }
             }
 
             if job.status == .running || job.status == .completed {
@@ -71,11 +104,8 @@ struct JobRowView: View {
             }
 
             if job.status == .failed, let error = job.errorMessage {
-                // v0.4.3：可点击展开错误详情
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded.toggle()
-                    }
+                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                 } label: {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -97,7 +127,6 @@ struct JobRowView: View {
                 if isExpanded {
                     HStack {
                         Button {
-                            // v0.4.3：使用 stderrDetails（完整信息）而非 errorMessage（短描述）
                             let details = job.stderrDetails ?? job.errorMessage ?? "未知错误"
                             errorCenter.showDetail(AppError(
                                 severity: .error,
@@ -113,7 +142,6 @@ struct JobRowView: View {
                         .controlSize(.small)
 
                         Button {
-                            // 重试：重新创建一个同类型的 job
                             viewModel.retryJob(job)
                         } label: {
                             Label("重试", systemImage: "arrow.clockwise")
