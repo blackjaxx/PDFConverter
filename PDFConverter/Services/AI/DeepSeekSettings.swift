@@ -62,4 +62,21 @@ enum DeepSeekSettings {
     static func clearAPIKey() throws {
         try KeychainHelper.deleteAPIKey()
     }
+
+    // MARK: - Snapshot
+
+    /// 配置快照，用于在长任务开始时获取一致的配置状态。
+    ///
+    /// 为什么需要快照？
+    /// - BaseURL 和 model 存储在 UserDefaults，每次访问直接读取
+    /// - API Key 存储在 Keychain，每次访问会触发 Keychain 查询
+    /// - 如果长任务（如 AI 转换）在执行过程中用户修改了配置，
+    ///   直接读取会得到不一致的中间状态，可能导致部分操作使用旧配置，
+    ///   部分使用新配置（如发送请求用的是旧 URL 但模型名已更新）
+    ///
+    /// 使用 `snapshot()` 在任务开始时一次性读取所有配置，后续使用快照，
+    /// 避免状态变化带来的不确定性。
+    static func snapshot() -> (baseURL: String, model: String, apiKey: String?) {
+        (baseURL, model, apiKey)
+    }
 }
