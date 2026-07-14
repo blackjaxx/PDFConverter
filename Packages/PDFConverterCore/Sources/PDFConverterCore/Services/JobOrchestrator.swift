@@ -154,9 +154,12 @@ public actor JobOrchestrator {
         notify(job)
 
         // 记录正在运行的 Task 引用（用于协调取消）
+        // 关键修复：将 job 作为 let 捕获，避免 Swift 6 并发模式下
+        // 捕获 var 到并发闭包的编译错误
+        let jobCopy = job
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.executeJob(job)
+            await self.executeJob(jobCopy)
         }
         runningTasks[job.id] = task
     }
