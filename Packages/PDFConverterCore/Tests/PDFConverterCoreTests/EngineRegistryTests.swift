@@ -208,3 +208,42 @@ final class AppleScriptEscapeTests: XCTestCase {
         XCTAssertTrue(types.contains(.pdfToExcel))
     }
 }
+
+
+/// 测试 MVP 可用性标记的正确性
+final class ConversionTypeMVPAvailabilityTests: XCTestCase {
+
+    /// Office → PDF 方向三个类型应该是 MVP 可用
+    func testOfficeToPDFAvailable() {
+        XCTAssertTrue(ConversionType.wordToPDF.isAvailableInMVP)
+        XCTAssertTrue(ConversionType.excelToPDF.isAvailableInMVP)
+        XCTAssertTrue(ConversionType.pptToPDF.isAvailableInMVP)
+    }
+
+    /// PDF → Office 方向两个类型也应该是 MVP 可用
+    /// 这是历史遗漏 bug 的回归测试：v0.4.0 之前这两个类型被错误地标记为 false
+    func testPDFToOfficeAvailable() {
+        XCTAssertTrue(ConversionType.pdfToWord.isAvailableInMVP,
+                      "pdfToWord 应为 MVP 可用（OfficeAutomationEngine 已实现）")
+        XCTAssertTrue(ConversionType.pdfToExcel.isAvailableInMVP,
+                      "pdfToExcel 应为 MVP 可用（OfficeAutomationEngine 已实现）")
+    }
+
+    /// Office 转换的 displayName 正确性
+    func testOfficeDisplayNames() {
+        XCTAssertEqual(ConversionType.wordToPDF.displayName, "Word → PDF")
+        XCTAssertEqual(ConversionType.excelToPDF.displayName, "Excel → PDF")
+        XCTAssertEqual(ConversionType.pptToPDF.displayName, "PPT → PDF")
+        XCTAssertEqual(ConversionType.pdfToWord.displayName, "PDF → Word")
+        XCTAssertEqual(ConversionType.pdfToExcel.displayName, "PDF → Excel")
+    }
+
+    /// Office 转换的分类正确性
+    func testOfficeCategories() {
+        XCTAssertEqual(ConversionType.wordToPDF.category, .officeToPDF)
+        XCTAssertEqual(ConversionType.excelToPDF.category, .officeToPDF)
+        XCTAssertEqual(ConversionType.pptToPDF.category, .officeToPDF)
+        XCTAssertEqual(ConversionType.pdfToWord.category, .pdfToOffice)
+        XCTAssertEqual(ConversionType.pdfToExcel.category, .pdfToOffice)
+    }
+}
