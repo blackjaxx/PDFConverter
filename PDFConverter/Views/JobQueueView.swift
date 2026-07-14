@@ -23,6 +23,7 @@ struct JobQueueView: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
+                .help("刷新任务列表")
             }
             .padding()
 
@@ -51,9 +52,13 @@ struct JobQueueView: View {
 /// 单个任务行，显示任务的详细信息：
 /// - 转换类型名称（如 "PDF → PNG"）
 /// - 当前状态徽章（等待/进行中/完成/失败/已取消）
-/// - 进度条（仅在 `running` 时显示，0.0~1.0）
+/// - 进度条（running 和 completed 都显示，completed 显示 100%）
 /// - 错误信息（红色文字，最多 3 行）
 /// - 输出文件链接（点击可在 Finder 中定位）
+///
+/// v0.4.2 修复：
+/// - ProgressView 在 running 和 completed 都显示
+/// - 完成时显示淡绿色并显示 100% 进度
 struct JobRowView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     let job: ConversionJob
@@ -66,10 +71,16 @@ struct JobRowView: View {
                 Spacer()
                 statusBadge
             }
-            if job.status == .running {
+            // 修复（v0.4.2）：running 和 completed 都显示进度条
+            // - running: 进度随任务实时更新
+            // - completed: 显示 100% 作为视觉确认
+            // - failed: 显示红色 + 错误信息
+            if job.status == .running || job.status == .completed {
                 ProgressView(value: job.progress)
+                    .progressViewStyle(.linear)
+                    .tint(progressColor)
             }
-            if let error = job.errorMessage {
+            if let error = job.errorMessage, job.status == .failed {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -86,16 +97,16 @@ struct JobRowView: View {
         .padding(.vertical, 4)
     }
 
+    /// 进度条颜色：完成时绿色，运行时蓝色
+    private var progressColor: Color {
+        switch job.status {
+        case .completed: return .green
+        case .failed: return .red
+        default: return .blue
+        }
+    }
+
     /// 根据任务状态显示不同颜色和文字的徽章。
-    ///
-    /// 五个状态对应的视觉样式：
-    /// | 状态      | 文字   | 颜色      |
-    /// |-----------|--------|-----------|
-    /// | pending   | 等待   | 灰色      |
-    /// | running   | 进行中 | 蓝色      |
-    /// | completed | 完成   | 绿色      |
-    /// | failed    | 失败   | 红色      |
-    /// | cancelled | 已取消 | 橙色      |
     @ViewBuilder
     private var statusBadge: some View {
         let (text, color): (String, Color) = {
