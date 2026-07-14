@@ -8,35 +8,23 @@ import PDFConverterCore
 ///
 /// `NavigationSplitView` 是 macOS 上最经典的布局模式（类似 Finder），
 /// 自动支持侧边栏收折和窗口大小调整。
+///
+/// v0.4.3：错误处理升级
+/// - 顶部叠加 ErrorBannerList 显示所有活动错误
+/// - 错误按严重度排序（error > warning > info）
+/// - 详情面板可查看完整 stderr（之前的 3 行截断已解除）
+/// - 错误自动消失或 sticky
 struct ContentView: View {
     @EnvironmentObject private var viewModel: AppViewModel
+    @ObservedObject private var errorCenter = ErrorCenter.shared
 
     var body: some View {
         NavigationSplitView {
             SidebarView()
         } detail: {
             VStack(spacing: 0) {
-                // 错误横幅：当 viewModel.errorMessage 不为 nil 时显示红色横幅，
-                // 点击右侧 X 按钮可关闭（调用 viewModel.clearError()）。
-                if let error = viewModel.errorMessage {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.white)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Button {
-                            viewModel.clearError()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    .padding(10)
-                    .background(Color.red)
-                }
+                // v0.4.3：错误横幅列表（替代旧的单条错误横幅）
+                ErrorBannerList(center: errorCenter)
 
                 HStack(spacing: 0) {
                     ConversionPanelView()
@@ -48,11 +36,13 @@ struct ContentView: View {
             }
         }
         .navigationTitle("PDF Converter")
+        .sheet(isPresented: $viewModel.showOfficeInstallSheet) {
+            OfficeInstallSheet(isPresented: $viewModel.showOfficeInstallSheet)
+        }
     }
 }
 
-/// 左侧转换面板：包含文件拖拽区、文件列表、参数设置和「开始转换」按钮。
-/// 所有可变数据通过 `@EnvironmentObject` 从 `AppViewModel` 获取。
+/// 左侧转换面板。
 struct ConversionPanelView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
@@ -114,8 +104,7 @@ struct ConversionPanelView: View {
     }
 }
 
-/// 显示已选择文件的列表，每个文件显示其 `lastPathComponent`（文件名+扩展名）。
-/// 放在拖拽区下方，给用户确认已选文件的视觉反馈。
+/// 文件列表视图。
 struct FileListView: View {
     let urls: [URL]
 
@@ -131,5 +120,111 @@ struct FileListView: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+}
+
+/// Office 安装指引 Sheet（当用户点击 Office 转换但未安装任何后端时显示）。
+struct OfficeInstallSheet: View {
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "doc.badge.gearshape")
+                    .font(.title)
+                    .foregroundStyle(.blue)
+                Text("安装 Office 文档转换组件")
+                    .font(.title2.bold())
+            }
+
+            Text("PDF Converter 支持三种 Office 文档转换方式，按推荐顺序：")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 12) {
+                OptionRow(
+                    icon: "checkmark.seal.fill",
+                    iconColor: .green,
+                    title: "Microsoft Office 365",
+                    subtitle: "原生导出，质量最高",
+                    detail: "如果已安装 Microsoft Word/Excel/PowerPoint，\n应用会自动调用它们，无需额外操作。"
+                )
+                OptionRow(
+                    icon: "doc.text.fill",
+                    iconColor: .blue,
+                    title: "Apple iWork（Pages/Numbers/Keynote）",
+                    subtitle: "系统自带，免费",
+                    detail: "如果已安装 iWork 套件，应用会自动调用它们。"
+                )
+                OptionRow(
+                    icon: "arrow.down.circle.fill",
+                    iconColor: .orange,
+                    title: "LibreOffice",
+                    subtitle: "免费开源，约 300MB",
+                    detail: "如果未安装任何 Office 软件，可下载 LibreOffice。\n终端命令：brew install --cask libreoffice",
+                    action: {
+                        Button("打开下载页") {
+                            if let url = URL(string: "https://www.libreoffice.org/download/") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                )
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("关闭") { isPresented = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 560, height: 540)
+    }
+}
+
+struct OptionRow<Content: View>: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
+    let detail: String
+    let action: (() -> Content)?
+
+    init(icon: String, iconColor: Color, title: String, subtitle: String, detail: String,
+         @ViewBuilder action: @escaping () -> Content = { EmptyView() }) {
+        self.icon = icon
+        self.iconColor = iconColor
+        self.title = title
+        self.subtitle = subtitle
+        self.detail = detail
+        self.action = action
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(iconColor)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title).font(.headline)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let action = action {
+                    action()
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.08)))
     }
 }
