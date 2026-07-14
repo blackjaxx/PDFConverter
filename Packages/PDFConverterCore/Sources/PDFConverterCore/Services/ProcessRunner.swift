@@ -149,6 +149,15 @@ public enum ProcessRunner {
             currentDirectory: currentDirectory
         )
         guard result.exitCode == 0 else {
+            // v0.4.5：日志记录失败的进程调用，方便用户查看
+            AppLogger.shared.error(
+                "Process failed: \(executable.lastPathComponent)",
+                metadata: [
+                    "exitCode": String(result.exitCode),
+                    "stderr": result.stderr.prefix(2000).description,
+                    "command": arguments.joined(separator: " ")
+                ]
+            )
             throw ConversionError.processFailed(
                 command: ([executable.path] + arguments).joined(separator: " "),
                 exitCode: result.exitCode,
