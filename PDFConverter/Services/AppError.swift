@@ -39,7 +39,7 @@ public enum AppErrorSeverity: String, Sendable, Codable {
 /// 与 `ConversionError` 的区别：
 /// - `ConversionError`: 引擎层错误，可能很技术化（如 "Process exit 127"）
 /// - `AppError`: 用户层错误，已经翻译成可操作的中文消息
-public struct AppError: Identifiable, Sendable {
+public struct AppError: Identifiable, Sendable, Equatable {
     public let id: UUID
     public let severity: AppErrorSeverity
     public let title: String
@@ -66,6 +66,11 @@ public struct AppError: Identifiable, Sendable {
         self.actions = actions
         self.timestamp = Date()
         self.isSticky = isSticky
+    }
+
+    // Equatable 仅基于 id（因为 actions 包含不可比较的回调）
+    public static func == (lhs: AppError, rhs: AppError) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
