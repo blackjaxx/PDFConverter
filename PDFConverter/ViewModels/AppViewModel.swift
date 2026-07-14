@@ -123,6 +123,24 @@ final class AppViewModel: ObservableObject {
         isOfficeAutomationAvailable
     }
 
+    /// 检查某个 ConversionType 在当前环境下是否有可用的后端。
+    ///
+    /// 返回 false 的情况：
+    /// - 该类型属于 Office 分类，但没有 Office 后端（MS Office / iWork / LibreOffice）
+    /// - 该类型需要网络但 DeepSeek 未配置（AI 类型）
+    ///
+    /// 用于 SidebarView 显示「需安装」徽章和 ConversionOptionsView 显示安装指引。
+    func isBackendAvailable(for type: ConversionType) -> Bool {
+        switch type.category {
+        case .officeToPDF, .pdfToOffice:
+            return isOfficeAutomationAvailable
+        case .ai:
+            return isDeepSeekConfigured
+        default:
+            return true
+        }
+    }
+
     /// 使用 `NSOpenPanel` 打开系统文件选择对话框。
     /// `allowsMultipleSelection` 在合并 PDF 模式下允许多选（因为合并需要多个文件），
     /// 其他模式下仅单选。
