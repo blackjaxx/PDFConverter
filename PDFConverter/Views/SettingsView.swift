@@ -43,10 +43,8 @@ struct SettingsView: View {
                 Text("DeepSeek（云端 AI）")
             }
 
-            // 离线工具链区域：
-            // 遍历 `toolReport` 列表，对每个 CLI 工具显示一个绿色勾（可用）或红色叉（不可用）。
-            // 可用时同时显示工具的绝对路径。
-            Section("离线工具链") {
+            // 离线工具链区域（用 header: 显式形式避免 Xcode 15 下误识别为 TableSection）
+            Section {
                 Text("应用从 `Contents/Resources/tools` 加载 CLI，也可回退到系统 PATH（Homebrew 等）。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -67,27 +65,33 @@ struct SettingsView: View {
                     }
                 }
 
-                if !viewModel.isLibreOfficeAvailable {
+                if !viewModel.isOfficeAutomationAvailable {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("LibreOffice 未安装")
+                        Text("Office 转换后端均不可用")
                             .font(.caption)
                             .foregroundStyle(.orange)
-                        Text("Office 文档（Word/Excel/PPT）转换需要 LibreOffice\n请从 libreoffice.org/download 下载安装")
+                        Text("未检测到 Microsoft Office、Apple iWork 或 LibreOffice。\n请安装任一 Office 套件以启用 Office 文档转换。")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
+            } header: {
+                Text("离线工具链")
             }
 
             // 分发信息：说明应用通过直接分发（非 Mac App Store）和沙盒已关闭，
             // 这意味着应用可以调用 Bundle 内的 CLI 工具，不受沙盒限制。
-            Section("分发") {
+            Section {
                 LabeledContent("渠道", value: "直接分发（非 Mac App Store）")
                 LabeledContent("沙盒", value: "已关闭，可调用捆绑 CLI")
+            } header: {
+                Text("分发")
             }
 
-            Section("关于") {
+            Section {
                 LabeledContent("版本", value: PDFConverterCore.version)
+            } header: {
+                Text("关于")
             }
         }
         .formStyle(.grouped)
