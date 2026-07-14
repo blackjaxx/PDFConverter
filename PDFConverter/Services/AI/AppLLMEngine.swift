@@ -4,7 +4,7 @@ import PDFConverterCore
 /// App 层的 DeepSeek AI 引擎，实现 PDF → AI 处理（摘要/翻译/Markdown）的完整流程。
 ///
 /// 处理流程：
-/// 1. 验证 DeepSeek API Key 是否已配置
+/// 1. 验证 DeepSeek API Key 是否已配置（一次性快照，避免转换过程中被清空）
 /// 2. 验证输入文件是否为 PDF
 /// 3. 使用 `PDFTextExtractor.extractText`（内部调用 pdftotext CLI）提取 PDF 正文
 /// 4. 按 `aiMaxInputChars` 限制截断文本
@@ -21,7 +21,11 @@ final class AppLLMEngine: ConversionEngine, @unchecked Sendable {
     }
 
     func convert(context: ConversionContext) async throws -> ConversionResult {
-        guard let apiKey = DeepSeekSettings.apiKey, DeepSeekSettings.isConfigured else {
+        // 关键修复：在转换开始时一次性快照 DeepSeek 配置，避免在长任务过程中
+        // 用户清除 Key 或修改 baseURL 导致读到不一致状态。
+        let snapshot = DeepSeekSettings.snapshot()
+
+        guard let apiKey = snapshot.apiKey, !apiKey.isEmpty else {
             throw ConversionError.aiNotConfigured(
                 "请先在设置 → DeepSeek 中填写 API Key（https://platform.deepseek.com）"
             )
@@ -38,10 +42,11 @@ final class AppLLMEngine: ConversionEngine, @unchecked Sendable {
         let maxChars = max(1000, context.job.parameters.aiMaxInputChars)
         let (chunk, truncated) = PDFTextExtractor.truncate(rawText, maxChars: maxChars)
 
+        // 使用快照构造客户端，不直接访问 DeepSeekSettings.apiKey
         let client = DeepSeekClient(
-            baseURL: DeepSeekSettings.baseURL,
+            baseURL: snapshot.baseURL,
             apiKey: apiKey,
-            model: DeepSeekSettings.model
+            model: snapshot.model
         )
 
         let (system, user, ext) = prompts(for: context.job.type, text: chunk, truncated: truncated, job: context.job)
@@ -63,7 +68,7 @@ final class AppLLMEngine: ConversionEngine, @unchecked Sendable {
         }
         try result.write(to: out, atomically: true, encoding: .utf8)
 
-        var logs = "DeepSeek model: \(DeepSeekSettings.model)"
+        var logs = "DeepSeek model: \(snapshot.model)"
         if truncated { logs += "\n（原文已截断至 \(maxChars) 字符）" }
         return ConversionResult(outputURLs: [out], logs: logs)
     }
