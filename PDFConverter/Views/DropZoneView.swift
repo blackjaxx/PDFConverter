@@ -44,31 +44,36 @@ struct DropZoneView: View {
 
     /// 处理拖拽投放的文件。
     ///
-    /// 关键实现细节：
-    /// - 使用 `NSItemProvider.loadItem` 异步加载每个被拖拽文件的 URL
-    /// - 使用 `DispatchGroup` 等待**所有**文件 URL 加载完成后，
-    ///   再统一更新 `viewModel.inputURLs`
-    /// - URL 可能以 `URL` 或 `Data` 两种格式提供，这里两种都处理
+    /// 关键修复：使用 NSLock 保护共享的 urls 数组，避免 `loadItem` 的
+    /// 回调在多线程并发 append 导致数据丢失或崩溃。
     ///
     /// 返回值 `true` 表示接受该拖拽操作。
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        // 用 NSLock 保护的线程安全数组
+        let lock = NSLock()
         var urls: [URL] = []
         let group = DispatchGroup()
+
         for provider in providers {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                 defer { group.leave() }
-                if error != nil {
-                    return
-                }
-                if let url = item as? URL {
-                    urls.append(url)
-                } else if let data = item as? Data,
-                          let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    urls.append(url)
-                }
+                guard error == nil else { return }
+                let url: URL? = {
+                    if let direct = item as? URL {
+                        return direct
+                    } else if let data = item as? Data {
+                        return URL(dataRepresentation: data, relativeTo: nil)
+                    }
+                    return nil
+                }()
+                guard let url else { return }
+                lock.lock()
+                urls.append(url)
+                lock.unlock()
             }
         }
+
         group.notify(queue: .main) {
             if !urls.isEmpty { viewModel.inputURLs = urls }
         }
