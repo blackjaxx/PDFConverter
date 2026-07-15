@@ -100,11 +100,14 @@ def resolve_dep(dep, binary):
         candidate = binary.parent / rel
         return candidate if candidate.exists() else None
 
-    if dep.startswith("@rpath/"):
-        rel = dep[len("@rpath/"):]
+    if dep.startswith("@rpath/") or dep.startswith("@loader_path/"):
+        prefix_len = len("@rpath/") if dep.startswith("@rpath/") else len("@loader_path/")
+        rel = dep[prefix_len:]
         for rpath in otool_RPATH(binary):
-            if rpath.startswith("@executable_path/"):
-                base = binary.parent / rpath[len("@executable_path/"):]
+            # 把 rpath 里的 @loader_path / @executable_path 替换为 binary 的目录
+            if rpath.startswith("@executable_path/") or rpath.startswith("@loader_path/"):
+                rp_prefix = len("@executable_path/") if rpath.startswith("@executable_path/") else len("@loader_path/")
+                base = binary.parent / rpath[rp_prefix:]
             elif rpath.startswith("/"):
                 base = Path(rpath)
             else:
@@ -158,12 +161,7 @@ def relink_binary_to_dylib(binary, original_dep, new_dep_name):
 def process_binary(binary, subdir_path):
     """Recursively resolve and copy all dylib dependencies of binary."""
     processed = set()
-    deps = otool_L(binary)
-    queue = [(binary, dep) for dep in deps]
-    # DEBUG
-    print(f"  [debug] {binary.name}: LC_RPATH={otool_RPATH(binary)}", file=sys.stderr)
-    print(f"  [debug] {binary.name}: deps={deps}", file=sys.stderr)
-    sys.stderr.flush()
+    queue = [(binary, dep) for dep in otool_L(binary)]
 
     while queue:
         target_bin, dep = queue.pop(0)
