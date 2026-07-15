@@ -17,6 +17,7 @@ final class AppViewModel: ObservableObject {
     @Published var isDeepSeekConfigured: Bool = DeepSeekSettings.isConfigured
     @Published private(set) var isOfficeAutomationAvailable: Bool = false
     @Published var showOfficeInstallSheet: Bool = false
+    @Published var showSettingsWindow: Bool = false
 
     private let registry: EngineRegistry
     private var jobsObserverTask: Task<Void, Never>?
@@ -24,6 +25,7 @@ final class AppViewModel: ObservableObject {
 
     init(registry: EngineRegistry? = nil) {
         self.registry = registry ?? Self.makeDefaultRegistry()
+        registerErrorActionHandlers()
         Task { await bootstrap() }
     }
 
@@ -35,6 +37,21 @@ final class AppViewModel: ObservableObject {
             OfficeAutomationEngine(), TesseractEngine(),
             AppWebKitEngine(), AppLLMEngine()
         ])
+    }
+
+    /// 将 AppErrorContext 的 handler 接到当前 ViewModel。
+    /// 之前 AppError 按钮 callback 是空的，这里把 UI 真正要做的行为注册进去。
+    private func registerErrorActionHandlers() {
+        AppErrorContext.shared.officeInstallHandler = { [weak self] in
+            self?.showOfficeInstallSheet = true
+        }
+        AppErrorContext.shared.openSettingsHandler = { [weak self] in
+            self?.showSettingsWindow = true
+        }
+        AppErrorContext.shared.showToolsHandler = { [weak self] in
+            // 设置页面的"工具链"区域是默认 Section，这里跳过去
+            self?.showSettingsWindow = true
+        }
     }
 
     func bootstrap() async {
@@ -83,18 +100,20 @@ final class AppViewModel: ObservableObject {
         for job in failed where !notifiedJobFailures.contains(job.id) {
             notifiedJobFailures.insert(job.id)
             // v0.4.5：写日志（同时出现在 Console.app 和设置页面日志查看器）
+            // v0.4.6：截断 stderr 到 2KB 防止日志爆掉
+            let truncatedStderr = job.stderrDetails.map { String($0.prefix(2000)) }
             AppLogger.shared.error(
                 "任务失败: \(job.type.displayName)",
                 metadata: [
                     "jobID": job.id.uuidString,
                     "error": job.errorMessage ?? "未知错误",
-                    "stderr": job.stderrDetails ?? "(无详细信息)"
+                    "stderr": truncatedStderr ?? "(无详细信息)"
                 ]
             )
             ErrorCenter.shared.report(AppError.jobFailed(
                 jobType: job.type.displayName,
                 error: job.errorMessage ?? "未知错误",
-                details: job.stderrDetails
+                details: truncatedStderr
             ))
         }
     }
@@ -149,7 +168,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    // MARK: - v0.4.4 重置与删除功能
+    // MARK: - 重置与删除功能
 
     /// 删除单个已选文件
     func removeInputURL(_ url: URL) {
@@ -200,11 +219,17 @@ final class AppViewModel: ObservableObject {
     /// 从队列中移除单个任务（不影响磁盘上的输出文件）
     func removeJob(id: UUID) async {
         await JobOrchestrator.shared.removeJob(id: id)
+        // v0.4.6：清理已通知记录，防止用户重新提交相同任务时收不到错误通知
+        notifiedJobFailures.remove(id)
     }
 
     /// 清空已完成的任务（不取消正在运行/等待的）
     func clearCompletedJobs() async {
         let removed = await JobOrchestrator.shared.clearCompletedJobs()
+        // v0.4.6：同步清理通知集合中已被移除的任务
+        for job in jobs where job.status == .completed || job.status == .failed || job.status == .cancelled {
+            notifiedJobFailures.remove(job.id)
+        }
         if removed > 0 {
             ErrorCenter.shared.reportInfo("已清除 \(removed) 个已完成任务")
         }
@@ -237,7 +262,8 @@ final class AppViewModel: ObservableObject {
         if (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice)
             && !isOfficeAutomationAvailable {
             AppLogger.shared.warning("Office conversion attempted but no backend available")
-            ErrorCenter.shared.report(AppError.missingLibreOffice())
+            // v0.4.6：使用新的 missingOfficeBackend（按钮 callback 真正生效）
+            ErrorCenter.shared.report(AppError.missingOfficeBackend())
             showOfficeInstallSheet = true
             return
         }
@@ -316,8 +342,6 @@ final class AppViewModel: ObservableObject {
         }
         reloadDeepSeekSettings()
     }
-
-    func clearError() {}
 
     func retryJob(_ job: ConversionJob) {
         let retry = ConversionJob(
