@@ -144,22 +144,62 @@ public final class ToolLocator: @unchecked Sendable {
         }
     }
 
-    /// 遍历 PATH 环境变量，查找可执行文件。
+    /// 遍历 PATH 环境变量 + 常见 Homebrew 路径，查找可执行文件。
     ///
-    /// PATH 按 `:` 分隔，依次检查每个目录下是否存在该名称的可执行文件。
-    /// 默认 PATH 值为 `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`，
-    /// 覆盖了 macOS 常见的工具安装位置。
+    /// v0.4.8 改进：除了默认的 PATH，还补充 macOS 上工具常见的安装位置。
+    /// 优先级：
+    /// 1. 进程的 PATH 环境变量
+    /// 2. Homebrew on Apple Silicon: `/opt/homebrew/bin`
+    /// 3. Homebrew on Intel: `/usr/local/bin`
+    /// 4. 系统路径: `/usr/bin`、`/bin`
     ///
     /// - Parameter name: 要查找的可执行文件名
     /// - Returns: 找到的可执行文件路径，未找到返回 `nil`
     private func findOnPATH(_ name: String) -> URL? {
-        let pathEnv = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
-        for dir in pathEnv.split(separator: ":") {
-            let candidate = URL(fileURLWithPath: String(dir)).appendingPathComponent(name)
+        // v0.4.8：合并 PATH + 常见 brew 路径（即使 PATH 中没有 brew）
+        var searchDirs: [String] = []
+        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
+            searchDirs.append(contentsOf: pathEnv.split(separator: ":").map(String.init))
+        }
+        // 补充 brew 常见路径（即使 PATH 没设）
+        for brewDir in ["/opt/homebrew/bin", "/opt/homebrew/sbin",
+                        "/usr/local/bin", "/usr/local/sbin",
+                        "/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
+            if !searchDirs.contains(brewDir) {
+                searchDirs.append(brewDir)
+            }
+        }
+
+        for dir in searchDirs {
+            let candidate = URL(fileURLWithPath: dir).appendingPathComponent(name)
             if FileManager.default.isExecutableFile(atPath: candidate.path) {
                 return candidate
             }
         }
         return nil
+    }
+
+    /// v0.4.8 安装提示：返回缺失的关键工具的 brew 安装命令。
+    /// 用于 App 启动时提示用户安装缺失的工具。
+    static func installHint(forMissing tools: [String]) -> String {
+        let brewFormulae = Set<String>()
+        for tool in tools {
+            switch tool {
+            case "pdftoppm", "pdftotext":
+                brewFormulae.insert("poppler")
+            case "qpdf":
+                brewFormulae.insert("qpdf")
+            case "gs":
+                brewFormulae.insert("ghostscript")
+            case "tesseract":
+                brewFormulae.insert("tesseract")
+            case "soffice":
+                brewFormulae.insert("--cask libreoffice")
+            default:
+                pass
+            }
+        }
+        if brewFormulae.isEmpty { return "" }
+        return "brew install " + brewFormulae.sorted().joined(separator: " ")
     }
 }
