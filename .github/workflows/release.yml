@@ -52,6 +52,12 @@ jobs:
           name: build-log
           path: build/build.log
 
+      - name: Run unit tests
+        run: |
+          cd Packages/PDFConverterCore
+          swift test 2>&1 | tail -50
+
+
       - name: Extract .app from build products
         if: success()
         run: |
