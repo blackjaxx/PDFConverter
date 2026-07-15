@@ -27,15 +27,19 @@ resolve() {
 # 让运行时查找路径指向 @executable_path/<libname>（同目录）。
 
 # 全局去重缓存：<lib_source_path> -> <dest_path_in_tools>
-declare -A COPIED_LIBS
+# 避免 bash 3.x（macOS 默认）不支持 declare -A，改用文件持久化
+COPIED_LIBS_FILE="$(mktemp -t pdfconverter_bundle.XXXXXX)"
+trap "rm -f "$COPIED_LIBS_FILE"" EXIT
 
 copy_lib_to_subdir() {
   local lib_source="$1"
   local subdir="$2"
 
   # 跳过已复制的（避免重复）
-  if [[ -n "${COPIED_LIBS[$lib_source]:-}" ]]; then
-    echo "$lib_source 已复制到 ${COPIED_LIBS[$lib_source]}" >&2
+  if grep -Fxq "$lib_source" "$COPIED_LIBS_FILE" 2>/dev/null; then
+    local existing
+    existing=$(grep -Fx "$lib_source" "$COPIED_LIBS_FILE" | head -1)
+    echo "$lib_source 已复制到 $existing" >&2
     return 0
   fi
 
@@ -59,7 +63,7 @@ copy_lib_to_subdir() {
   # 修改 dylib 的自身 ID，确保其他 dylib 引用它时能找到
   install_name_tool -id "@executable_path/$lib_name" "$dest_lib" 2>/dev/null || true
 
-  COPIED_LIBS[$lib_source]="$dest_lib"
+  echo "$lib_source" >> "$COPIED_LIBS_FILE"
   echo "  dylib copied: $lib_name → $subdir/" >&2
 
   # 递归处理这个 dylib 的依赖
