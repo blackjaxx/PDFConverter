@@ -8,6 +8,8 @@
 
 ![App Icon](docs/app-icon-preview.png)
 
+> 迈阿密海滩风格图标：PDF 文档 + 棕榈树 + 日落渐变。一眼能看出"PDF 转换器"。
+
 ## 系统要求与运行环境
 
 ### 最低要求（运行预编译 DMG）
@@ -137,6 +139,8 @@ cd Packages/PDFConverterCore && swift test
 | 安全 | 加密 / 解密 | qpdf（256-bit AES） |
 | OCR | 可搜索 PDF | Tesseract |
 | AI | 摘要 / 翻译 / Markdown | DeepSeek Chat API |
+
+> 💡 **v0.4.5 新增**：所有功能出错时都有清晰的错误提示 + 完整 stderr 详情。设置 → 查看日志可在 App 内查看最近 500 条日志。
 
 ## 部署说明
 
@@ -502,6 +506,24 @@ git push origin v0.2.6
 ## 文档
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 模块划分与数据流
+
+## 最新更新
+
+### v0.4.5 — 应用日志系统 + 迈阿密海滩风格图标
+
+- 🖼 重新设计应用图标：迈阿密海滩风格
+- 📋 完整应用日志系统（os.Logger + 内存缓冲 + Console.app 集成）
+- 🔍 设置页面内嵌日志查看器
+- 🐛 修复多个 bug（cancel 逻辑、数据竞争、路径转义、Keychain 竞态、Swift 6 并发）
+- 🗑 重置/删除功能：参数重置、文件删除、任务批量清空
+
+### v0.4.0 — Office 零依赖
+
+- 🪂 OfficeAutomationEngine 智能降级（MS Office → Apple iWork → LibreOffice）
+- 🎨 应用图标（基础蓝白设计）
+- ⚙️ 单元测试覆盖
+
+详见 [Releases](https://github.com/blackjaxx/PDFConverter/releases) 页面。
 
 ## 许可证
 
