@@ -33,7 +33,6 @@ struct ErrorBannerList: View {
 struct ErrorBanner: View {
     let error: AppError
     @ObservedObject private var center = ErrorCenter.shared
-    @State private var showDetail = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
