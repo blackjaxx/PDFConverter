@@ -1,0 +1,24 @@
+# GitHub Dependabot 配置
+# 用途：自动检测并提醒依赖更新（本项目主要依赖 macOS 系统工具 + Homebrew）
+
+version: 2
+updates:
+  # GitHub Actions 工作流依赖
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
+  # Swift Package Manager 依赖（如未来添加）
+  - package-ecosystem: "swift"
+    directory: "/Packages"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
