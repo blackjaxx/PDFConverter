@@ -19,12 +19,19 @@ final class LogStore: ObservableObject {
         refresh()
 
         // 定时刷新（每 1 秒）
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        // 用 Timer 兼容旧 API，新代码可以改用 AsyncTimer 或 CADisplayLink
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            // Timer 回调不在 actor 上，需要 hop 到主线程
+            MainActor.assumeIsolated {
                 self?.refresh()
             }
         }
+        // 保持 timer 引用
+        self.refreshTimer = timer
     }
+
+    private var refreshTimer: Timer?
+
 
     func refresh() {
         let current = AppLogger.shared.allEntries()
