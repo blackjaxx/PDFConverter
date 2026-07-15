@@ -103,8 +103,9 @@ def resolve_dep(dep, binary):
     if dep.startswith("@rpath/") or dep.startswith("@loader_path/"):
         prefix_len = len("@rpath/") if dep.startswith("@rpath/") else len("@loader_path/")
         rel = dep[prefix_len:]
+
+        # 1) 用 binary 的 LC_RPATH 表解析（可能含 @loader_path/@executable_path）
         for rpath in otool_RPATH(binary):
-            # 把 rpath 里的 @loader_path / @executable_path 替换为 binary 的目录
             if rpath.startswith("@executable_path/") or rpath.startswith("@loader_path/"):
                 rp_prefix = len("@executable_path/") if rpath.startswith("@executable_path/") else len("@loader_path/")
                 base = binary.parent / rpath[rp_prefix:]
@@ -115,6 +116,25 @@ def resolve_dep(dep, binary):
             candidate = base / rel
             if candidate.exists():
                 return candidate.resolve()
+
+        # 2) Homebrew 兜底：常规搜索路径
+        rel_name = rel.split("/")[-1] if "/" in rel else rel
+        for sys_root in [
+            "/opt/homebrew/lib",
+            "/usr/local/lib",
+            "/usr/lib",
+            "/Library/Apple/usr/lib",
+        ]:
+            # 也试试符号链接可能存在的结构
+            candidate = Path(sys_root) / rel
+            if candidate.exists():
+                return candidate.resolve()
+            # libpoppler.161.dylib 这种带版本号的，搜索上级目录
+            for subdir in [".", ".."]:
+                candidate = Path(sys_root) / subdir / rel
+                if candidate.exists():
+                    return candidate.resolve()
+
         return None
 
     return None
