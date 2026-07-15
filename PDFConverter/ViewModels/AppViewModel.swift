@@ -75,7 +75,7 @@ final class AppViewModel: ObservableObject {
 
         reloadDeepSeekSettings()
         toolReport = ToolLocator.shared.availabilityReport()
-        isOfficeAutomationAvailable = OfficeAvailability.check()
+        isOfficeAutomationAvailable = OfficeAvailability.check(forceRefresh: true)
 
         if !isOfficeAutomationAvailable && (selectedType.category == .officeToPDF || selectedType.category == .pdfToOffice) {
             selectedType = .pdfToPNG
@@ -125,7 +125,8 @@ final class AppViewModel: ObservableObject {
     }
 
     func refreshOfficeAvailability() {
-        isOfficeAutomationAvailable = OfficeAvailability.check()
+        // 用户手动刷新时跳过缓存
+        isOfficeAutomationAvailable = OfficeAvailability.check(forceRefresh: true)
     }
 
     var groupedTypes: [(ConversionCategory, [ConversionType])] {
@@ -355,11 +356,51 @@ final class AppViewModel: ObservableObject {
     }
 }
 
+/// Office 转换后端可用性检查器。
+///
+/// 每次启动 `check()` 都查 6 次 `NSWorkspace` + 一次 `ToolLocator`，
+/// 对启动速度和 SwiftUI 渲染都有轻微影响。这里加一层 10 秒缓存：
+/// - 启动时立即查一次（`forceRefresh: true`），结果缓存
+/// - 10 秒内的后续调用直接返回缓存值
+/// - 超过 10 秒后下一次调用会重新查
+///
+/// 这样 SwiftUI body 重渲染、`refreshOfficeAvailability` 等高频调用
+/// 不会重复触发昂贵的查询。
 enum OfficeAvailability {
     static let msOfficeBundleIDs = ["com.microsoft.Word", "com.microsoft.Excel", "com.microsoft.Powerpoint"]
     static let iWorkBundleIDs = ["com.apple.iWork.Pages", "com.apple.iWork.Numbers", "com.apple.iWork.Keynote"]
 
-    static func check() -> Bool {
+    private static let cacheTTL: TimeInterval = 10.0
+    private static var cachedResult: Bool?
+    private static var cacheTimestamp: Date = .distantPast
+    private static let cacheLock = NSLock()
+
+    /// 检查系统是否安装了任何 Office 转换后端（MS Office / iWork / LibreOffice）。
+    ///
+    /// - Parameter forceRefresh: 跳过缓存直接查询。用于用户切换设置后立即刷新。
+    /// - Returns: true 表示至少有可用的后端
+    static func check(forceRefresh: Bool = false) -> Bool {
+        cacheLock.lock()
+        let now = Date()
+        if !forceRefresh,
+           let cached = cachedResult,
+           now.timeIntervalSince(cacheTimestamp) < cacheTTL {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
+        // 实际查询
+        let result = performCheck()
+
+        cacheLock.lock()
+        cachedResult = result
+        cacheTimestamp = now
+        cacheLock.unlock()
+        return result
+    }
+
+    private static func performCheck() -> Bool {
         for bundleID in msOfficeBundleIDs {
             if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil { return true }
         }
