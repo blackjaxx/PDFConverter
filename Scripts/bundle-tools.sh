@@ -76,23 +76,99 @@ fix_dylibs() {
   local target="$1"
   local subdir="$2"
 
-  # 提取所有依赖路径（系统库忽略，跳过 /usr/lib /System/）
+  # 提取所有依赖，处理 @rpath/@executable_path/绝对路径三种情况
+  # 使用 otool -L 输出格式: "    libname.dylib (compatibility version X, current version Y)"
   local deps
-  deps=$(otool -L "$target" | grep -oE '/opt/homebrew/[^ ]+|[[:space:]]/usr/local/[^ ]+|[[:space:]]/usr/local/Cellar/[^ ]+' | tr -d ' ' | sort -u || true)
+  # 只看 .dylib 结尾的行（.tbd 等忽略）
+  deps=$(otool -L "$target" 2>/dev/null | awk '/\.dylib/ {print $1}' | grep -vE '^/(usr/lib|System/|usr/lib/)' || true)
 
   if [[ -z "$deps" ]]; then
     return 0
   fi
 
-  for lib_path in $deps; do
-    copy_lib_to_subdir "$lib_path" "$subdir"
+  for dep in $deps; do
+    local lib_path
+    lib_path=$(resolve_dep "$dep" "$target")
 
+    # 跳过系统库（/usr/lib/, /System/, 绝对路径且无法解析）
+    if [[ -z "$lib_path" ]] || [[ "$lib_path" == /usr/lib/* ]] || [[ "$lib_path" == /System/* ]]; then
+      continue
+    fi
+
+    # 跳过已经被相同 binary 在同 subdir 引用过的（避免冗余）
     local lib_name
     lib_name=$(basename "$lib_path")
 
-    # 修改 binary 引用路径
-    install_name_tool -change "$lib_path" "@executable_path/$lib_name" "$target" 2>/dev/null || true
+    copy_lib_to_subdir "$lib_path" "$subdir"
+
+    # 修改 binary 引用（无论原来是绝对路径还是 @rpath，都改成 @executable_path/<name>）
+    install_name_tool -change "$dep" "@executable_path/$lib_name" "$target" 2>/dev/null || true
   done
+}
+
+# 把 otool 输出里的 @rpath/libfoo.dylib 转换为实际路径。
+# 策略：
+#   1. 如果是绝对路径 → 直接返回
+#   2. 如果以 @rpath/ 开头 → 遍历 binary 的所有 LC_RPATH，根据优先级尝试解析
+#      （@executable_path/<target_dir> + @rpath/<lib> 形式）
+resolve_dep() {
+  local dep="$1"
+  local binary="$2"
+
+  # 绝对路径（无前缀）
+  if [[ "$dep" != @* ]]; then
+    if [[ -f "$dep" ]]; then
+      realpath "$dep" 2>/dev/null || echo "$dep"
+    else
+      echo ""
+    fi
+    return
+  fi
+
+  # @executable_path/<lib> → binary 同目录 + lib
+  if [[ "$dep" == @executable_path/* ]]; then
+    local binary_dir
+    binary_dir=$(dirname "$binary")
+    local rel_path="${dep#@executable_path/}"
+    local candidate="$binary_dir/$rel_path"
+    if [[ -f "$candidate" ]]; then
+      realpath "$candidate" 2>/dev/null || echo "$candidate"
+    else
+      echo ""
+    fi
+    return
+  fi
+
+  # @rpath/<lib> → 收集所有 LC_RPATH 后逐个尝试
+  if [[ "$dep" == @rpath/* ]]; then
+    local rel_path="${dep#@rpath/}"
+    local rpaths
+    rpaths=$(otool -l "$binary" 2>/dev/null | awk '/LC_RPATH/{flag=1; next} /load command/{flag=0} flag && /path/ {gsub(/^ +path +/, ""); print}' || true)
+
+    for rpath in $rpaths; do
+      local candidate
+
+      # @executable_path 在 rpath 里出现
+      if [[ "$rpath" == @executable_path/* ]]; then
+        local binary_dir
+        binary_dir=$(dirname "$binary")
+        local r="${rpath#@executable_path/}"
+        candidate="$binary_dir/$r/$rel_path"
+      elif [[ "$rpath" == /* ]]; then
+        candidate="$rpath/$rel_path"
+      fi
+
+      if [[ -n "${candidate:-}" ]] && [[ -f "$candidate" ]]; then
+        realpath "$candidate" 2>/dev/null || echo "$candidate"
+        return
+      fi
+    done
+
+    echo ""
+    return
+  fi
+
+  echo ""
 }
 
 copy_bin() {
