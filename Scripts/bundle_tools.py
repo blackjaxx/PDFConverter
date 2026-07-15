@@ -53,22 +53,39 @@ def otool_L(binary):
 
 
 def otool_RPATH(binary):
-    """Return LC_RPATH entries."""
+    """Return LC_RPATH entries from `otool -l`.
+
+    Output format:
+        Load command N
+            cmd LC_RPATH
+        cmdsize 32
+           path /opt/homebrew/lib (offset 12)
+    """
     try:
         out = run(["otool", "-l", str(binary)])
     except subprocess.CalledProcessError:
         return []
+
+    import re
     rpaths = []
     in_rpath = False
     for line in out.split("\n"):
         s = line.strip()
-        if s == "cmd LC_RPATH":
+        # 进入 LC_RPATH 段（以 cmd LC_RPATH 起始）
+        if re.match(r"cmd\s+LC_RPATH\s*$", s):
             in_rpath = True
             continue
-        if in_rpath and s.startswith("path "):
-            rpath = s.split(" ", 1)[1].split(" ")[0]
-            rpaths.append(rpath)
-            in_rpath = False
+        if in_rpath:
+            # path 行：`path /opt/homebrew/lib (offset 12)`
+            m = re.match(r"path\s+(\S+)", s)
+            if m:
+                rpath = m.group(1)
+                rpaths.append(rpath)
+                in_rpath = False
+                continue
+            # 下一个 cmd 表示退出
+            if s.startswith("cmd ") or s.startswith("Load command"):
+                in_rpath = False
     return rpaths
 
 
