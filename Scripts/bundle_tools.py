@@ -154,24 +154,55 @@ def copy_dylib(src, subdir_path):
     if src in COPIED:
         return COPIED[src]
 
-    dest = subdir_path / src.name
-    if not dest.exists():
-        shutil.copyfile(str(src), str(dest))
-        os.chmod(str(dest), 0o755)
-        print(f"  dylib: {src.name} -> {subdir_path.name}/")
+    full_name = src.name  # e.g. libpoppler.161.0.0.dylib
+    # 提取短名：去掉末尾的额外版本号段
+    # 例：libpoppler.161.0.0.dylib -> libpoppler.161.dylib
+    parts = full_name.replace(".dylib", "").split(".")
+    if len(parts) >= 3:
+        short_name = ".".join(parts[:2]) + ".dylib"
+    else:
+        short_name = full_name
 
-    new_id = f"@executable_path/{src.name}"
+    dest_full = subdir_path / full_name
+    dest_short = subdir_path / short_name
+
+    if not dest_full.exists():
+        shutil.copyfile(str(src), str(dest_full))
+        os.chmod(str(dest_full), 0o755)
+        print(f"  dylib: {full_name} -> {subdir_path.name}/")
+
+    # macOS libsymlink: 短名 -> 全名
+    if full_name != short_name:
+        if dest_short.exists() or dest_short.is_symlink():
+            dest_short.unlink()
+        os.symlink(full_name, str(dest_short))
+        print(f"     sym: {short_name} -> {full_name}")
+
+    # Dylib 自身 ID 用短名（binaries 也用短名引用）
+    new_id = f"@executable_path/{short_name}"
     subprocess.run(
-        ["install_name_tool", "-id", new_id, str(dest)],
+        ["install_name_tool", "-id", new_id, str(dest_full)],
         check=False, capture_output=True
     )
 
-    COPIED[src] = dest
-    return dest
+    COPIED[src] = dest_full
+    if full_name != short_name:
+        COPIED[short_name] = dest_full
+    return dest_full
 
 
 def relink_binary_to_dylib(binary, original_dep, new_dep_name):
-    new_dep = f"@executable_path/{new_dep_name}"
+    """把 binary 的 original_dep 引用改为 @executable_path/<dylib 短名>.
+
+    new_dep_name 是 dylib 的 basename (libfoo.A.B.C.dylib 或 libfoo.A.dylib).
+    """
+    parts = new_dep_name.replace(".dylib", "").split(".")
+    if len(parts) >= 3:
+        short_name = ".".join(parts[:2]) + ".dylib"
+    else:
+        short_name = new_dep_name
+
+    new_dep = f"@executable_path/{short_name}"
     subprocess.run(
         ["install_name_tool", "-change", original_dep, new_dep, str(binary)],
         check=False, capture_output=True
