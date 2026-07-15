@@ -2,17 +2,11 @@ import Foundation
 import SwiftUI
 
 /// 应用错误严重级别。
-///
-/// 决定 UI 显示样式：
-/// - `.info`: 蓝色提示条，自动消失（例如启动工具检测提醒）
-/// - `.warning`: 橙色提示条，需要用户操作但不阻塞流程
-/// - `.error`: 红色错误条，阻塞当前操作的关键错误
 public enum AppErrorSeverity: String, Sendable, Codable {
     case info
     case warning
     case error
 
-    /// 颜色映射
     var color: Color {
         switch self {
         case .info: return .blue
@@ -21,7 +15,6 @@ public enum AppErrorSeverity: String, Sendable, Codable {
         }
     }
 
-    /// 图标名
     var icon: String {
         switch self {
         case .info: return "info.circle.fill"
@@ -31,14 +24,49 @@ public enum AppErrorSeverity: String, Sendable, Codable {
     }
 }
 
+/// 错误动作上下文 - 包含 UI 层可以使用的工具。
+///
+/// v0.4.6 新增：解决「按钮 callback 为空」的问题。
+/// 之前 `AppErrorAction` 的 callback 闭包是 `@Sendable () async -> Void`，
+/// 没有任何外部信息可以访问，所以「安装指引」「前往设置」按钮只能空实现。
+///
+/// 现在 callback 接收一个 `AppErrorContext`，可以调用其中提供的方法：
+/// - `openURL(_:)`：打开外部链接
+/// - `showOfficeInstallGuide()`：弹出 Office 安装指引
+/// - `openSettings()`：打开设置窗口
+@MainActor
+public final class AppErrorContext {
+    public static let shared = AppErrorContext()
+
+    /// 标记某类动作的处理已经被 UI 接管
+    public var officeInstallHandler: (() -> Void)?
+    public var openSettingsHandler: (() -> Void)?
+    public var showToolsHandler: (() -> Void)?
+
+    private init() {}
+
+    /// 打开外部 URL（包装 NSWorkspace.open）
+    public func openURL(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
+
+    /// 让 UI 弹出 Office 安装指引
+    public func showOfficeInstallGuide() {
+        officeInstallHandler?()
+    }
+
+    /// 让 UI 打开设置窗口
+    public func openSettings() {
+        openSettingsHandler?()
+    }
+
+    /// 让 UI 展示工具状态详情
+    public func showTools() {
+        showToolsHandler?()
+    }
+}
+
 /// 应用错误模型。
-///
-/// 表示一个可被 UI 显示的错误（区别于 `ConversionError` 这种内部错误类型）。
-/// `AppError` 关注的是「用户需要知道什么」而不是「技术细节」。
-///
-/// 与 `ConversionError` 的区别：
-/// - `ConversionError`: 引擎层错误，可能很技术化（如 "Process exit 127"）
-/// - `AppError`: 用户层错误，已经翻译成可操作的中文消息
 public struct AppError: Identifiable, Sendable, Equatable {
     public let id: UUID
     public let severity: AppErrorSeverity
@@ -68,20 +96,23 @@ public struct AppError: Identifiable, Sendable, Equatable {
         self.isSticky = isSticky
     }
 
-    // Equatable 仅基于 id（因为 actions 包含不可比较的回调）
+    // Equatable 仅基于 id（actions 包含不可比较的回调）
     public static func == (lhs: AppError, rhs: AppError) -> Bool {
         lhs.id == rhs.id
+    }
+
+    /// 用于错误去重的「内容指纹」：忽略 id 和 timestamp。
+    public var dedupeKey: String {
+        "\(severity.rawValue)|\(title)|\(message)"
     }
 }
 
 /// 错误横幅上的可操作按钮。
-///
-/// 例如 "打开下载页"、"在 Finder 中显示"、"重试" 等。
 public struct AppErrorAction: Identifiable, Sendable {
     public let id: UUID
     public let label: String
     public let role: ActionRole
-    public let callback: @Sendable () async -> Void
+    public let callback: @Sendable @MainActor (AppErrorContext) async -> Void
 
     public enum ActionRole: String, Sendable {
         case primary    // 蓝色强调按钮
@@ -93,7 +124,7 @@ public struct AppErrorAction: Identifiable, Sendable {
         id: UUID = UUID(),
         label: String,
         role: ActionRole = .secondary,
-        callback: @escaping @Sendable () async -> Void
+        callback: @escaping @Sendable @MainActor (AppErrorContext) async -> Void
     ) {
         self.id = id
         self.label = label
@@ -105,22 +136,20 @@ public struct AppErrorAction: Identifiable, Sendable {
 // MARK: - 预定义的常见错误
 
 extension AppError {
-    /// LibreOffice 未安装
-    static func missingLibreOffice() -> AppError {
+    /// Office 转换后端不可用
+    static func missingOfficeBackend() -> AppError {
         AppError(
             severity: .warning,
-            title: "未检测到 LibreOffice",
-            message: "Office 文档（Word/Excel/PPT）转换需要 LibreOffice。\nMicrosoft Office 和 Apple iWork 也可以替代。",
+            title: "未检测到 Office 转换后端",
+            message: "Office 文档（Word/Excel/PPT）转换需要：\n• Microsoft Office 365\n• Apple iWork（Pages/Numbers/Keynote）\n• 或 LibreOffice（免费）",
             actions: [
-                AppErrorAction(label: "下载 LibreOffice", role: .primary) {
+                AppErrorAction(label: "下载 LibreOffice", role: .primary) { ctx in
                     if let url = URL(string: "https://www.libreoffice.org/download/") {
-                        await MainActor.run {
-                            NSWorkspace.shared.open(url)
-                        }
+                        ctx.openURL(url)
                     }
                 },
-                AppErrorAction(label: "安装指引", role: .secondary) {
-                    // 由 AppViewModel 处理（显示详细安装说明 sheet）
+                AppErrorAction(label: "安装指引", role: .secondary) { ctx in
+                    ctx.showOfficeInstallGuide()
                 }
             ],
             isSticky: true
@@ -134,8 +163,8 @@ extension AppError {
             title: "DeepSeek 未配置",
             message: "AI 功能需要 DeepSeek API Key。\n前往「设置 → DeepSeek」填写。",
             actions: [
-                AppErrorAction(label: "前往设置", role: .primary) {
-                    // 由 AppViewModel 处理（打开设置）
+                AppErrorAction(label: "前往设置", role: .primary) { ctx in
+                    ctx.openSettings()
                 }
             ],
             isSticky: true
@@ -149,8 +178,8 @@ extension AppError {
             title: "部分工具未安装",
             message: "以下 CLI 工具未检测到：\(names.joined(separator: "、"))\n相关功能将无法使用。",
             actions: [
-                AppErrorAction(label: "查看详情", role: .secondary) {
-                    // 由 AppViewModel 处理（打开设置显示工具列表）
+                AppErrorAction(label: "查看详情", role: .secondary) { ctx in
+                    ctx.showTools()
                 }
             ],
             isSticky: false
