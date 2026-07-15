@@ -163,20 +163,20 @@ def copy_dylib(src, subdir_path):
     else:
         short_name = full_name
 
+    # v0.4.8：拷贝到全名 + 短名两个文件（不用 symlink，避免 codesign/dyld 在某些
+    # 系统版本下不解析符号链接的兼容性问题）
     dest_full = subdir_path / full_name
-    dest_short = subdir_path / short_name
+    dest_short = subdir_path / short_name if short_name != full_name else None
 
     if not dest_full.exists():
         shutil.copyfile(str(src), str(dest_full))
         os.chmod(str(dest_full), 0o755)
         print(f"  dylib: {full_name} -> {subdir_path.name}/")
 
-    # macOS libsymlink: 短名 -> 全名
-    if full_name != short_name:
-        if dest_short.exists() or dest_short.is_symlink():
-            dest_short.unlink()
-        os.symlink(full_name, str(dest_short))
-        print(f"     sym: {short_name} -> {full_name}")
+    if dest_short is not None and not dest_short.exists():
+        shutil.copyfile(str(src), str(dest_short))
+        os.chmod(str(dest_short), 0o755)
+        print(f"  dylib (alias): {short_name} -> {subdir_path.name}/")
 
     # Dylib 自身 ID 用短名（binaries 也用短名引用）
     new_id = f"@executable_path/{short_name}"
@@ -184,6 +184,12 @@ def copy_dylib(src, subdir_path):
         ["install_name_tool", "-id", new_id, str(dest_full)],
         check=False, capture_output=True
     )
+    # 同时改短名副本
+    if dest_short is not None:
+        subprocess.run(
+            ["install_name_tool", "-id", new_id, str(dest_short)],
+            check=False, capture_output=True
+        )
 
     COPIED[src] = dest_full
     if full_name != short_name:
