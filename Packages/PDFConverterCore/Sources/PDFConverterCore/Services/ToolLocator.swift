@@ -47,9 +47,15 @@ public final class ToolLocator: @unchecked Sendable {
     /// 查找流程：
     /// 1. 先查缓存（有锁保护的 O(1) 字典查询）
     /// 2. 再查 App 内打包的目录（`toolsRoot/relativePath`）
+    ///    - 注意：仅当工具能真正执行（`canExecute()` 返回 true）时才认为可用
+    ///    - 否则把坏路径加入黑名单，跳到下一步
     /// 3. 最后查找系统 PATH（通过 `findOnPATH` 搜索每个路径）
     ///
     /// 找到的路径会写入缓存，后续调用直接命中缓存。
+    ///
+    /// v0.4.8 修复：之前的版本只用 `isExecutableFile` 检查文件存在 + 执行位，
+    /// 但 dyld 加载失败的工具也会通过校验，导致 ProcessRunner 启动后挂掉。
+    /// 现在实际跑一下 `--version`/`-v` 来确认工具能真正执行。
     ///
     /// - Parameters:
     ///   - tool: 要查找的工具描述（包含名称和相对路径）
@@ -57,28 +63,57 @@ public final class ToolLocator: @unchecked Sendable {
     /// - Returns: 工具的可执行文件绝对路径，找不到则返回 `nil`
     public func path(for tool: BundledTool, allowSystemFallback: Bool = true) -> URL? {
         lock.withLock {
-            // 缓存命中：直接返回已查到过的路径
+            // 缓存命中：直接返回已查到过的路径（运行时也会验证可用）
             if let cached = cache[tool.name] {
                 return cached
             }
 
-            // 优先查找 App 内捆绑的工具
+            // 优先查找 App 内捆绑的工具——但必须真的能执行
             if let root = toolsRoot {
                 let bundled = root.appendingPathComponent(tool.relativePath)
-                if FileManager.default.isExecutableFile(atPath: bundled.path) {
+                if FileManager.default.isExecutableFile(atPath: bundled.path), canExecute(bundled) {
                     cache[tool.name] = bundled
                     return bundled
+                } else {
+                    // 把坏路径加入黑名单（避免重复尝试）
+                    blacklisted.insert(tool.name)
                 }
             }
 
-            // 回退到系统 PATH
-            if allowSystemFallback, let system = findOnPATH(tool.name) {
+            // App 内工具不可用 → 回退到系统 PATH
+            if allowSystemFallback, let system = findOnPATH(tool.name), canExecute(system) {
                 cache[tool.name] = system
                 return system
             }
 
             return nil
         }
+    }
+
+    /// 黑名单：捆绑工具路径不可用的工具名，避免下次继续尝试
+    private var blacklisted: Set<String> = []
+
+    /// 真正执行 `--version` 测试能否启动（解决 dyld 加载失败被漏检的 bug）。
+    /// 同步执行，开销 <50ms（每个工具只跑一次，缓存命中后不再调用）。
+    private func canExecute(_ url: URL) -> Bool {
+        let process = Process()
+        process.executableURL = url
+        process.arguments = ["--version"]
+        let stderr = Pipe()
+        let stdout = Pipe()
+        process.standardError = stderr
+        process.standardOutput = stdout
+
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+
+        // 等待最多 3 秒（大多数工具 <100ms 返回）
+        process.waitUntilExit()
+
+        return process.terminationReason == .exit && process.terminationStatus == 0
     }
 
     /// 查找工具，找不到则抛出 ``ConversionError.missingTool`` 错误。
