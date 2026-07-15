@@ -178,18 +178,23 @@ def copy_dylib(src, subdir_path):
         os.chmod(str(dest_short), 0o755)
         print(f"  dylib (alias): {short_name} -> {subdir_path.name}/")
 
-    # Dylib 自身 ID 用短名（binaries 也用短名引用）
+    # Dylib 自身 ID 用短名
     new_id = f"@executable_path/{short_name}"
     subprocess.run(
         ["install_name_tool", "-id", new_id, str(dest_full)],
         check=False, capture_output=True
     )
-    # 同时改短名副本
     if dest_short is not None:
         subprocess.run(
             ["install_name_tool", "-id", new_id, str(dest_short)],
             check=False, capture_output=True
         )
+
+    # v0.4.8 关键修复：dylib 内部对其他 dylib 的引用也要改成 @executable_path/...
+    # 否则 libpoppler.161.0.0.dylib 加载时会找不到 libfontconfig
+    # 这里我们会逐个检查 dylib 自己的 deps，把绝对路径和 @rpath 都改成 @executable_path/short_name
+    # 但这一步依赖 COPIED 缓存，所以放在 copy_dylib 之后由 process_binary 的递归自然处理
+    # （因为 dylib 的 deps 被加进 queue 时 relink_binary_to_dylib 会改它）
 
     COPIED[src] = dest_full
     if full_name != short_name:
