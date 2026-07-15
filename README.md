@@ -8,6 +8,84 @@
 
 ![App Icon](docs/app-icon-preview.png)
 
+## 系统要求与运行环境
+
+### 最低要求（运行预编译 DMG）
+
+| 项目 | 最低版本 | 推荐版本 |
+|------|---------|---------|
+| 操作系统 | macOS 13.0 Ventura | macOS 14 Sonoma 或更新 |
+| 架构 | Apple Silicon (M1/M2/M3/M4) | 同左 |
+| 内存 | 2 GB RAM | 4 GB+ |
+| 磁盘空间 | 500 MB | 1 GB（包含 OCR 语言包） |
+| 网络 | 仅 AI 功能需要（DeepSeek API） | — |
+
+> ⚠️ **当前 Release 仅支持 Apple Silicon (arm64)**。Intel Mac 用户需要本地构建（见下方「本地构建」章节）。
+
+### 内置工具（开箱即用）
+
+App Bundle 已捆绑以下 CLI 工具，**无需额外安装**：
+
+| 工具 | 来源 | 用途 |
+|------|------|------|
+| `pdftoppm` / `pdftotext` | Poppler | PDF → 图片 / 文本 |
+| `qpdf` | Qpdf | PDF 拆分 / 加密 / 解密 |
+| `gs` | Ghostscript | PDF 压缩 |
+| `tesseract` | Tesseract OCR | 图片 PDF → 可搜索 PDF |
+| `tessdata/*` | Tesseract 语言包 | chi_sim / eng 等 |
+
+### 可选依赖（按需安装）
+
+下列功能**只在用户使用时才需要**，应用会自动检测并提示安装：
+
+| 依赖 | 何时需要 | 安装方式 |
+|------|---------|---------|
+| **Microsoft Office 365** | Office → PDF 转换 | 已购买则自动使用 |
+| **Apple iWork**（Pages/Numbers/Keynote） | Office → PDF 转换 | 系统自带或 App Store 免费下载 |
+| **LibreOffice** | 当上述两个都未安装时 | `brew install --cask libreoffice` |
+| **DeepSeek API Key** | AI 摘要 / 翻译 / Markdown | 在「设置 → DeepSeek」中填写 |
+
+> 💡 **Office 文档转换采用智能降级**：应用会优先调用 Microsoft Office → 其次 Apple iWork → 最后 LibreOffice。绝大多数用户无需安装 LibreOffice。
+
+### 网络依赖说明
+
+| 功能 | 是否需要网络 |
+|------|------------|
+| PDF / 图片 / 文本 / OCR / Office / 页面操作 / 压缩 / 加密 | ❌ 完全离线 |
+| AI 摘要 / 翻译 / Markdown | ✅ 需联网（调用 DeepSeek API） |
+
+应用本身**不会主动联网**（除 AI 功能外），也无任何遥测或数据收集。
+
+### 权限说明
+
+App 运行需要的权限：
+
+| 权限 | 用途 |
+|------|------|
+| **文件读写**（用户授权） | 选择输入 PDF / 图片，选择输出文件夹 |
+| **网络出站** | 仅 AI 功能访问 DeepSeek API |
+| **Keychain 访问** | 存储 DeepSeek API Key |
+| **Helper 工具执行** | 调用 Bundle 内的 CLI（pdftoppm / qpdf 等） |
+
+应用**未启用沙盒**（关闭沙盒是为了允许执行捆绑的 CLI 工具）。如果你对安全有顾虑，建议仅从官方 Release 下载 DMG，不要运行来历不明的版本。
+
+### 常见问题
+
+**Q: 下载后打开提示「无法验证开发者」？**
+A: 因为应用未经过 Apple 代码签名。打开终端执行 `xattr -cr /Applications/PDFConverter.app` 清除隔离标记即可。
+
+**Q: Office 文档转换报错「未找到 LibreOffice」？**
+A: 表示你的系统没装 Microsoft Office / iWork / LibreOffice 三者任何一个。安装其中之一即可。
+
+**Q: OCR 转换结果乱码？**
+A: 检查设置中的 OCR 语言参数。中文用 `chi_sim`，繁体用 `chi_tra`，英文用 `eng`，多语言用 `+` 连接（如 `chi_sim+eng`）。
+
+**Q: AI 功能不能用？**
+A: 需要在「设置 → DeepSeek」配置 API Key。申请地址：https://platform.deepseek.com/api_keys
+
+**Q: 应用启动报错或闪退？**
+A: 打开「设置 → 调试日志 → 查看日志」查看最近错误，或在 macOS Console.app 中按 subsystem `com.local.pdfconverter` 过滤。
+
 ## 下载与安装
 
 ### 从 GitHub Releases 下载（推荐）
