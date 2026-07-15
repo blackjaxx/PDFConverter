@@ -75,7 +75,7 @@ struct ErrorBanner: View {
                     HStack(spacing: 8) {
                         ForEach(error.actions) { action in
                             Button {
-                                Task { await action.callback() }
+                                Task { await action.callback(AppErrorContext.shared) }
                             } label: {
                                 Text(action.label)
                             }
