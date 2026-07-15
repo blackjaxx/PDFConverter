@@ -196,6 +196,17 @@ def copy_dylib(src, subdir_path):
     # 但这一步依赖 COPIED 缓存，所以放在 copy_dylib 之后由 process_binary 的递归自然处理
     # （因为 dylib 的 deps 被加进 queue 时 relink_binary_to_dylib 会改它）
 
+    # v0.4.8：清理 LC_RPATH，强制 dyld 用 @executable_path 解析
+    for d in [dest_full, dest_short]:
+        if d is None:
+            continue
+        rpaths = otool_RPATH(d)
+        for i in range(len(rpaths) - 1, -1, -1):
+            subprocess.run(
+                ["install_name_tool", "-delete_rpath", str(d), f"orig_path{i}"],
+                check=False, capture_output=True
+            )
+
     COPIED[src] = dest_full
     if full_name != short_name:
         COPIED[short_name] = dest_full
