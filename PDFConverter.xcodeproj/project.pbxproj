@@ -27,6 +27,8 @@
 		C10000000000000000000001 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000011 /* AppError.swift */; };
 		C10000000000000000000002 /* ErrorCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000012 /* ErrorCenter.swift */; };
 		C10000000000000000000003 /* ErrorBannerList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000013 /* ErrorBannerList.swift */; };
+		D10000000000000000000001 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000011 /* AppLogger.swift */; };
+		D10000000000000000000002 /* LogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000012 /* LogStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
