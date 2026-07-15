@@ -5,8 +5,21 @@
 ## [Unreleased]
 
 ### 计划中
-- 性能优化：NSOfficeAutomationEngine 启动时检查缓存
 - 国际化：英文 UI 支持
+
+## [0.4.7] - 2026-07-15
+
+### 性能
+- **OfficeAvailability 10 秒缓存**：避免 SwiftUI body 重渲染时重复查 NSWorkspace
+- **LogStore 智能订阅**：从 1 秒轮询改为 AsyncStream 订阅，零延迟 + 无新日志零开销
+- **AppLogger version 机制**：每次 log() 递增版本号，订阅者可实时感知
+
+### 健壮性
+- **TesseractEngine 原子操作**：`replaceItemAt` 替代「先 remove 再 move」，防止中间失败丢文件
+- **dependabot.yml**：自动检测 GitHub Actions 和 SwiftPM 依赖更新
+
+### 清理
+- 删除 ErrorBanner 中未使用的 `@State showDetail`
 
 ## [0.4.6] - 2026-07-15
 
