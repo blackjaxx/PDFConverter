@@ -84,22 +84,25 @@ jobs:
             "$TOOLS_DIR/tesseract/tesseract"; do
             name=$(basename "$tool_path")
             echo -n "  $name ... "
-            if "$tool_path" --version >/dev/null 2>&1 || "$tool_path" -version >/dev/null 2>&1 || "$tool_path" version >/dev/null 2>&1; then
+            if "$tool_path" --version >/dev/null 2>&1 || \
+               "$tool_path" -version >/dev/null 2>&1 || \
+               "$tool_path" version >/dev/null 2>&1 || \
+               "$tool_path" -h >/dev/null 2>&1; then
               echo "OK"
             else
-              echo "WARN (dyld issue?)"
-              otool -L "$tool_path" | grep -iE '(homebrew|not found|@executable)' || true
+              echo "FAIL"
+              otool -L "$tool_path" 2>&1 | grep -E '@rpath|@executable' | head -3 | sed "s/^/    /"
               FAILED=1
             fi
           done
           echo ""
           if [ $FAILED -eq 1 ]; then
-            echo "=== One or more tools failed verification (non-fatal, DMG will still be built) ==="
+            echo "=== One or more tools FAILED verification ==="
             echo "=== Tool tree files: ==="
             find "$TOOLS_DIR" -type f | sort
-          else
-            echo "All tools verified OK."
+            exit 1
           fi
+          echo "All tools verified OK."
 
       - name: Create DMG
         if: success()
