@@ -158,7 +158,12 @@ def relink_binary_to_dylib(binary, original_dep, new_dep_name):
 def process_binary(binary, subdir_path):
     """Recursively resolve and copy all dylib dependencies of binary."""
     processed = set()
-    queue = [(binary, dep) for dep in otool_L(binary)]
+    deps = otool_L(binary)
+    queue = [(binary, dep) for dep in deps]
+    # DEBUG
+    print(f"  [debug] {binary.name}: LC_RPATH={otool_RPATH(binary)}", file=sys.stderr)
+    print(f"  [debug] {binary.name}: deps={deps}", file=sys.stderr)
+    sys.stderr.flush()
 
     while queue:
         target_bin, dep = queue.pop(0)
