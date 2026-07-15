@@ -5,6 +5,10 @@
 # Homebrew binaries are dynamically linked. Without bundling the linked .dylib files,
 # the tools will fail with "dyld: Library not loaded" on machines without Homebrew.
 # This script uses otool -L + install_name_tool to create a self-contained tool tree.
+#
+# v0.4.8 修复：之前 head -n 20 截断 + 共享工具被错误塞到第一个 subdir，
+#         导致 poppler/qpdf/tesseract 的 dylib 被全部漏打包或装到错位置。
+#         重写为按依赖去重，并按 subdir 归类。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,33 +17,76 @@ mkdir -p "$DEST"
 
 # --- helpers ----------------------------------------------------------------
 
+# 解析符号链接 / 不解析符号链接，得到规范的绝对路径
 resolve() {
   python3 -c "import os; print(os.path.realpath('$1'))" 2>/dev/null || readlink -f "$1" 2>/dev/null || echo "$1"
 }
 
+# 给定一个二进制文件和它的 dylib 路径列表，把每个 dylib 复制到
+# Resources/tools/<subdir>/，然后用 install_name_tool -change 修改 binary 的引用，
+# 让运行时查找路径指向 @executable_path/<libname>（同目录）。
+
+# 全局去重缓存：<lib_source_path> -> <dest_path_in_tools>
+declare -A COPIED_LIBS
+
+copy_lib_to_subdir() {
+  local lib_source="$1"
+  local subdir="$2"
+
+  # 跳过已复制的（避免重复）
+  if [[ -n "${COPIED_LIBS[$lib_source]:-}" ]]; then
+    echo "$lib_source 已复制到 ${COPIED_LIBS[$lib_source]}" >&2
+    return 0
+  fi
+
+  local lib_name
+  lib_name=$(basename "$lib_source")
+  local dest_lib="$DEST/$subdir/$lib_name"
+
+  mkdir -p "$DEST/$subdir"
+
+  # 解析为真实路径（避免 homebrew ../Cellar 符号链接问题）
+  local real_lib
+  real_lib=$(resolve "$lib_source")
+
+  if [[ ! -f "$real_lib" ]]; then
+    echo "⚠️  dylib not found: $lib_source (resolved: $real_lib)" >&2
+    return 1
+  fi
+
+  cp -f "$real_lib" "$dest_lib"
+  chmod 755 "$dest_lib"
+  # 修改 dylib 的自身 ID，确保其他 dylib 引用它时能找到
+  install_name_tool -id "@executable_path/$lib_name" "$dest_lib" 2>/dev/null || true
+
+  COPIED_LIBS[$lib_source]="$dest_lib"
+  echo "  dylib copied: $lib_name → $subdir/" >&2
+
+  # 递归处理这个 dylib 的依赖
+  fix_dylibs "$dest_lib" "$subdir"
+}
+
+# 收集一个 binary 的所有 dylib 依赖（包括 transitive），
+# 把它们复制到 subdir，并修改 binary 引用。
 fix_dylibs() {
   local target="$1"
   local subdir="$2"
 
+  # 提取所有依赖路径（系统库忽略，跳过 /usr/lib /System/）
   local deps
-  deps=$(otool -L "$target" | grep -oE '/opt/homebrew/[^ ]+|/usr/local/[^ ]+|/usr/local/Cellar/[^ ]+' | head -n 20 || true)
+  deps=$(otool -L "$target" | grep -oE '/opt/homebrew/[^ ]+|[[:space:]]/usr/local/[^ ]+|[[:space:]]/usr/local/Cellar/[^ ]+' | tr -d ' ' | sort -u || true)
+
+  if [[ -z "$deps" ]]; then
+    return 0
+  fi
 
   for lib_path in $deps; do
+    copy_lib_to_subdir "$lib_path" "$subdir"
+
     local lib_name
     lib_name=$(basename "$lib_path")
-    local dest_lib="$DEST/$subdir/$lib_name"
 
-    if [[ ! -f "$dest_lib" ]]; then
-      local real_lib
-      real_lib=$(resolve "$lib_path")
-      if [[ -f "$real_lib" ]]; then
-        cp -f "$real_lib" "$dest_lib"
-        chmod 755 "$dest_lib"
-        install_name_tool -id "@executable_path/$lib_name" "$dest_lib" 2>/dev/null || true
-        fix_dylibs "$dest_lib" "$subdir"
-      fi
-    fi
-
+    # 修改 binary 引用路径
     install_name_tool -change "$lib_path" "@executable_path/$lib_name" "$target" 2>/dev/null || true
   done
 }
@@ -54,18 +101,17 @@ copy_bin() {
     return
   fi
 
-  path=$(resolve "$path")
+  local real_path
+  real_path=$(resolve "$path")
+
   mkdir -p "$DEST/$subdir"
-  cp -f "$path" "$DEST/$subdir/$name"
+  cp -f "$real_path" "$DEST/$subdir/$name"
   chmod +x "$DEST/$subdir/$name"
   echo "✓ $name → $DEST/$subdir/$name"
 
+  # 用 fix_dylibs 处理这个 binary 的依赖
+  # 注意：从这个 binary 找到的依赖放到它自己的 subdir 里
   fix_dylibs "$DEST/$subdir/$name" "$subdir"
-}
-
-copy_bin_with_libs() {
-  copy_bin "$1" "$2"
-  echo "  → bundled deps: $(find "$DEST/$2" -name '*.dylib' -maxdepth 1 | wc -l | tr -d ' ') dylibs"
 }
 
 # --- main -------------------------------------------------------------------
@@ -108,3 +154,35 @@ find "$DEST" -type f | sort | while read -r f; do
 done
 echo ""
 echo "Done."
+
+# 验证：每个工具都能成功执行 --version 不报错
+echo ""
+echo "=== Verification ==="
+FAILED=0
+for tool_path in \
+  "$DEST/poppler/pdftoppm" \
+  "$DEST/poppler/pdftotext" \
+  "$DEST/qpdf/qpdf" \
+  "$DEST/ghostscript/gs" \
+  "$DEST/tesseract/tesseract"; do
+  name=$(basename "$tool_path")
+  echo -n "  $name ... "
+  if "$tool_path" --version >/dev/null 2>&1 || \
+     "$tool_path" -version >/dev/null 2>&1 || \
+     "$tool_path" version >/dev/null 2>&1 || \
+     "$tool_path" -h >/dev/null 2>&1; then
+    echo "OK"
+  else
+    echo "FAIL"
+    echo "    诊断: $(otool -L "$tool_path" 2>&1 | grep -E '@rpath|@executable' | head -3)"
+    FAILED=1
+  fi
+done
+
+if [[ $FAILED -eq 1 ]]; then
+  echo ""
+  echo "❌ 有工具验证失败，请检查上述 dylib 路径"
+  exit 1
+fi
+echo ""
+echo "✅ All tools verified OK."
