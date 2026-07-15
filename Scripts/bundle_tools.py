@@ -197,13 +197,16 @@ def copy_dylib(src, subdir_path):
     # （因为 dylib 的 deps 被加进 queue 时 relink_binary_to_dylib 会改它）
 
     # v0.4.8：清理 LC_RPATH，强制 dyld 用 @executable_path 解析
+    # install_name_tool -delete_rpath <path> <file>
     for d in [dest_full, dest_short]:
         if d is None:
             continue
         rpaths = otool_RPATH(d)
-        for i in range(len(rpaths) - 1, -1, -1):
+        for rpath in rpaths:
+            if rpath.startswith("@"):  # 已经是 @ 前缀的跳过
+                continue
             subprocess.run(
-                ["install_name_tool", "-delete_rpath", str(d), f"orig_path{i}"],
+                ["install_name_tool", "-delete_rpath", rpath, str(d)],
                 check=False, capture_output=True
             )
 
