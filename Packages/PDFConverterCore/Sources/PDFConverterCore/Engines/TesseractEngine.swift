@@ -93,10 +93,14 @@ public struct TesseractEngine: ConversionEngine {
             throw ConversionError.outputMissing(generated.path)
         }
 
+        // 原子操作：先写到临时文件，再替换目标文件
+        // 避免「先 remove 再 move」中间失败导致目标文件丢失
         if FileManager.default.fileExists(atPath: out.path) {
-            try FileManager.default.removeItem(at: out)
+            // 使用 replaceItemAt 原子替换（如果目标存在）
+            _ = try FileManager.default.replaceItemAt(out, withItemAt: generated)
+        } else {
+            try FileManager.default.moveItem(at: generated, to: out)
         }
-        try FileManager.default.moveItem(at: generated, to: out)
 
         return ConversionResult(outputURLs: [out])
     }
