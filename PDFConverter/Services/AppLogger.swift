@@ -9,6 +9,11 @@ import AppKit
 /// - os.Logger 是 macOS 13+ 推荐的日志系统，统一通过 Console.app 可读
 /// - 内存缓冲区保存最近 N 条日志，方便在 App 内查看（设置页面「查看日志」）
 ///
+/// v0.4.7 升级：增加版本号机制，LogStore 可以零延迟订阅新日志：
+/// - 每次 log() 调用都递增 version
+/// - versionStream: AsyncStream 推送变化事件
+/// - snapshot() 一次性返回 entries + version 用于一致性读取
+///
 /// 使用示例：
 /// ```swift
 /// AppLogger.shared.info("PDF converted", metadata: ["file": "report.pdf"])
@@ -25,6 +30,35 @@ public final class AppLogger: @unchecked Sendable {
     private let bufferSize = 500
     private let bufferLock = NSLock()
     private var buffer: [LogEntry] = []
+
+    /// 单调递增的版本号，每次 log() 调用都 +1
+    private let versionLock = NSLock()
+    private var _version: UInt64 = 0
+    private var version: UInt64 {
+        get { versionLock.lock(); defer { versionLock.unlock() }; return _version }
+        set { versionLock.lock(); _version = newValue; versionLock.unlock() }
+    }
+
+    /// 版本号变化的订阅流（用于 LogStore 智能更新）
+    private var versionContinuation: AsyncStream<UInt64>.Continuation?
+    public lazy var versionStream: AsyncStream<UInt64> = {
+        AsyncStream { continuation in
+            self.versionContinuation = continuation
+        }
+    }()
+
+    /// 一次性快照：返回当前 entries + version
+    public struct Snapshot: Sendable {
+        public let entries: [LogEntry]
+        public let version: UInt64
+    }
+
+    public func snapshot() -> Snapshot {
+        bufferLock.lock()
+        let entries = buffer
+        bufferLock.unlock()
+        return Snapshot(entries: entries, version: version)
+    }
 
     public struct LogEntry: Identifiable, Sendable {
         public let id = UUID()
@@ -94,6 +128,10 @@ public final class AppLogger: @unchecked Sendable {
             buffer.removeFirst(buffer.count - bufferSize)
         }
         bufferLock.unlock()
+
+        // 3. 递增版本号，通知订阅者
+        version += 1
+        versionContinuation?.yield(version)
     }
 
     // MARK: - 查询方法
@@ -110,13 +148,16 @@ public final class AppLogger: @unchecked Sendable {
         bufferLock.lock()
         buffer.removeAll()
         bufferLock.unlock()
+        version += 1
+        versionContinuation?.yield(version)
     }
 
     /// 导出为字符串（用于「保存日志」功能）
     public func exportAsString() -> String {
+        let entries = allEntries()
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return buffer.map { entry in
+        return entries.map { entry in
             let meta = entry.metadata.isEmpty ? "" : " \(entry.metadata)"
             return "[\(formatter.string(from: entry.timestamp))] [\(entry.level.rawValue.uppercased())] \(entry.message)\(meta)"
         }.joined(separator: "\n")
