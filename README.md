@@ -8,7 +8,6 @@
 
 ![App Icon](docs/app-icon-preview.png)
 
-> 迈阿密海滩风格图标：PDF 文档 + 棕榈树 + 日落渐变。一眼能看出"PDF 转换器"。
 
 ## 系统要求与运行环境
 
