@@ -58,8 +58,8 @@ copy_lib_to_subdir() {
     return 1
   fi
 
-  cp -f "$real_lib" "$dest_lib"
-  chmod 755 "$dest_lib"
+  cp -f "$real_lib" "$dest_lib" 2>/dev/null || true
+  chmod 755 "$dest_lib" 2>/dev/null || true
   # 修改 dylib 的自身 ID，确保其他 dylib 引用它时能找到
   install_name_tool -id "@executable_path/$lib_name" "$dest_lib" 2>/dev/null || true
 
