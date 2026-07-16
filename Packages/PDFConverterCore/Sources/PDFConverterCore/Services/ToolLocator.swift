@@ -179,10 +179,10 @@ public final class ToolLocator: @unchecked Sendable {
         return nil
     }
 
-    /// v0.4.8 安装提示：返回缺失的关键工具的 brew 安装命令。
+    /// 安装提示：返回缺失的关键工具的 brew 安装命令。
     /// 用于 App 启动时提示用户安装缺失的工具。
     static func installHint(forMissing tools: [String]) -> String {
-        let brewFormulae = Set<String>()
+        var brewFormulae = Set<String>()
         for tool in tools {
             switch tool {
             case "pdftoppm", "pdftotext":
@@ -196,7 +196,7 @@ public final class ToolLocator: @unchecked Sendable {
             case "soffice":
                 brewFormulae.insert("--cask libreoffice")
             default:
-                pass
+                break
             }
         }
         if brewFormulae.isEmpty { return "" }
