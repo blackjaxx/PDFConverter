@@ -1,48 +1,115 @@
 import SwiftUI
 import PDFConverterCore
 
+/// 主界面 - v0.4.9 重构版
+///
+/// 使用 macOS HIG 推荐的多窗格布局：
+/// ```
+/// ┌──────────────────────────────────────────┐
+/// │ NavigationSplitView                       │
+/// │ ┌─────────┬──────────────────────────┐    │
+/// │ │ Sidebar  │ 主区域                    │    │
+/// │ │          │ ├─ 顶部 toolbar          │    │
+/// │ │ 分类选择  │ ├─ ConversionPanelView   │    │
+/// │ │          │ ↕ 可拖拽 splitter        │    │
+/// │ │          │ ├─ JobQueueView (右 dock)│    │
+/// │ └─────────┴──────────────────────────┘    │
+/// └──────────────────────────────────────────┘
+/// ```
+///
+/// 关键改进：
+/// 1. **HSplitView + 可拖拽 splitter** - 用户可调整转换面板和任务队列的宽度
+/// 2. **顶部工具栏** - 「开始转换」按钮和批量操作移到顶部，不再滚动
+/// 3. **自动适配紧凑模式** - 窗口很窄时任务队列可被隐藏
 struct ContentView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @ObservedObject private var errorCenter = ErrorCenter.shared
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
+                .navigationSplitViewColumnWidth(
+                    min: 180,
+                    ideal: 220,
+                    max: 320
+                )
         } detail: {
             VStack(spacing: 0) {
                 ErrorBannerList(center: errorCenter)
 
-                HStack(spacing: 0) {
+                // HSplitView 提供原生 macOS 拖拽 splitter
+                HSplitView {
                     ConversionPanelView()
-                        .frame(minWidth: 380)
-                    Divider()
+                        .frame(minWidth: 360, idealWidth: 480)
+                        .layoutPriority(1)
+
                     JobQueueView()
-                        .frame(minWidth: 320)
+                        .frame(
+                            minWidth: 280,
+                            idealWidth: 340,
+                            maxWidth: 480
+                        )
+                        .layoutPriority(0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle("PDF Converter")
+        .navigationTitle(viewModel.selectedType.displayName)
+        .navigationSubtitle(viewModel.engineLabel(for: viewModel.selectedType))
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                // v0.4.9：开始转换按钮移到顶部工具栏
+                Button {
+                    viewModel.enqueueConversion()
+                } label: {
+                    Label("开始转换", systemImage: "play.fill")
+                }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(viewModel.inputURLs.isEmpty || viewModel.needsDeepSeekConfiguration)
+                .help("把所有已选文件加入转换队列（Cmd+Enter）")
+
+                // 批量任务操作
+                Menu {
+                    Button("清空已完成") {
+                        Task { await viewModel.clearCompletedJobs() }
+                    }
+                    .disabled(!viewModel.hasJobsInState(.completed, .failed, .cancelled))
+
+                    Button("清空全部（含运行中）", role: .destructive) {
+                        Task { await viewModel.clearAllJobs() }
+                    }
+                    .disabled(viewModel.jobs.isEmpty)
+                } label: {
+                    Label("任务操作", systemImage: "checklist")
+                }
+                .help("任务队列的批量操作")
+            }
+        }
         .sheet(isPresented: $viewModel.showOfficeInstallSheet) {
             OfficeInstallSheet(isPresented: $viewModel.showOfficeInstallSheet)
         }
     }
 }
 
-/// v0.4.4：转换面板完整重写，添加：
-/// - 标题右侧「重置全部」按钮
-/// - 文件列表带删除按钮和清空按钮
-/// - 输出文件夹带清除按钮
+/// v0.4.9：转换面板 - 顶部 toolbar 在 ContentView，「开始转换」按钮已移走
+/// 其他布局保持一致
 struct ConversionPanelView: View {
     @EnvironmentObject private var viewModel: AppViewModel
     @State private var showResetConfirm = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // 标题 + 重置全部按钮
-                HStack {
-                    Text(viewModel.selectedType.displayName)
-                        .font(.title2.bold())
+            VStack(alignment: .leading, spacing: 18) {
+                // 标题 + 重置按钮（标题 + 描述，更清晰）
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(viewModel.selectedType.displayName)
+                            .font(.title2.bold())
+                        Text("引擎: \(viewModel.engineLabel(for: viewModel.selectedType))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Button {
                         showResetConfirm = true
@@ -67,10 +134,6 @@ struct ConversionPanelView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
                 }
 
-                Text("引擎: \(viewModel.engineLabel(for: viewModel.selectedType))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 DropZoneView()
 
                 if !viewModel.inputURLs.isEmpty {
@@ -83,9 +146,15 @@ struct ConversionPanelView: View {
 
                 ConversionOptionsView(onReset: { viewModel.resetCurrentParameters() })
 
-                // 输出文件夹区域：带"清除"按钮
-                HStack {
-                    Button("选择输出文件夹") { viewModel.pickOutputDirectory() }
+                // 输出文件夹区域
+                HStack(spacing: 8) {
+                    Image(systemName: "folder")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    Text("输出文件夹")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                     if let dir = viewModel.outputDirectory {
                         Text(dir.path)
                             .lineLimit(1)
@@ -102,21 +171,21 @@ struct ConversionPanelView: View {
                         .buttonStyle(.borderless)
                         .help("清除输出文件夹（恢复为默认与源文件同目录）")
                     } else {
-                        Text("默认：与源文件相同目录")
+                        Text("默认（与源文件相同目录）")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Button {
+                        viewModel.pickOutputDirectory()
+                    } label: {
+                        Text("选择…")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-
-                Button(action: { viewModel.enqueueConversion() }) {
-                    Label("开始转换", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(viewModel.inputURLs.isEmpty || viewModel.needsDeepSeekConfiguration)
+                .padding(.vertical, 6)
             }
-            .padding(24)
+            .padding(20)
         }
         .confirmationDialog(
             "重置整个转换面板？",
@@ -133,7 +202,7 @@ struct ConversionPanelView: View {
     }
 }
 
-/// v0.4.4：文件列表 - 每个文件独立删除按钮 + 顶部清空全部按钮
+/// v0.4.9 文件列表：色彩更柔和、间距更紧凑
 struct FileListView: View {
     let urls: [URL]
     let onRemove: (URL) -> Void
@@ -158,10 +227,10 @@ struct FileListView: View {
             ForEach(urls, id: \.path) { url in
                 HStack(spacing: 6) {
                     Image(systemName: "doc.fill")
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(.tint)
                         .font(.caption)
                     Text(url.lastPathComponent)
-                        .font(.caption)
+                        .font(.callout)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(url.path)
@@ -170,7 +239,6 @@ struct FileListView: View {
                         onRemove(url)
                     } label: {
                         Image(systemName: "minus.circle.fill")
-                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.borderless)
                     .help("从列表中移除（不删除磁盘文件）")
@@ -179,7 +247,7 @@ struct FileListView: View {
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(.background.secondary))
     }
 }
 
@@ -191,7 +259,7 @@ struct OfficeInstallSheet: View {
             HStack {
                 Image(systemName: "doc.badge.gearshape")
                     .font(.title)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(.tint)
                 Text("安装 Office 文档转换组件")
                     .font(.title2.bold())
             }
@@ -199,18 +267,18 @@ struct OfficeInstallSheet: View {
             Text("PDF Converter 支持三种 Office 文档转换方式，按推荐顺序：")
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 12) {
-                OptionRow(
+            VStack(alignment: .leading, spacing: 10) {
+                installOptionRow(
                     icon: "checkmark.seal.fill", iconColor: .green,
                     title: "Microsoft Office 365", subtitle: "原生导出，质量最高",
                     detail: "如果已安装 Microsoft Word/Excel/PowerPoint，\n应用会自动调用它们，无需额外操作。"
                 )
-                OptionRow(
+                installOptionRow(
                     icon: "doc.text.fill", iconColor: .blue,
                     title: "Apple iWork（Pages/Numbers/Keynote）", subtitle: "系统自带，免费",
                     detail: "如果已安装 iWork 套件，应用会自动调用它们。"
                 )
-                OptionRow(
+                installOptionRow(
                     icon: "arrow.down.circle.fill", iconColor: .orange,
                     title: "LibreOffice", subtitle: "免费开源，约 300MB",
                     detail: "如果未安装任何 Office 软件，可下载 LibreOffice。\n终端命令：brew install --cask libreoffice",
@@ -236,27 +304,14 @@ struct OfficeInstallSheet: View {
         .padding(24)
         .frame(width: 560, height: 540)
     }
-}
 
-struct OptionRow<Content: View>: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let subtitle: String
-    let detail: String
-    let action: (() -> Content)?
-
-    init(icon: String, iconColor: Color, title: String, subtitle: String, detail: String,
-         @ViewBuilder action: @escaping () -> Content = { EmptyView() }) {
-        self.icon = icon
-        self.iconColor = iconColor
-        self.title = title
-        self.subtitle = subtitle
-        self.detail = detail
-        self.action = action
-    }
-
-    var body: some View {
+    @ViewBuilder
+    private func installOptionRow<Content: View>(
+        icon: String, iconColor: Color,
+        title: String, subtitle: String,
+        detail: String,
+        @ViewBuilder action: () -> Content = { EmptyView() }
+    ) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.title2)
@@ -271,11 +326,13 @@ struct OptionRow<Content: View>: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if let action = action { action() }
+                if Content.self != EmptyView.self {
+                    action()
+                }
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.08)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(.background.tertiary))
     }
 }
