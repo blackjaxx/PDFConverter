@@ -32,7 +32,7 @@ struct JobQueueView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(.background.tertiary))
+                    .background(Capsule().fill(Color(nsColor: .controlColor)))
             }
             Spacer()
             Menu {
