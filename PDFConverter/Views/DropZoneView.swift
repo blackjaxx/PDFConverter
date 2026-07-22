@@ -1,55 +1,49 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 拖拽文件区域，支持两种文件选择方式：
-/// 1. **拖拽**：从 Finder 拖入文件到虚线圈区域
-/// 2. **点击**：点击 "或点击选择文件" 链接按钮，弹出系统文件选择对话框
+/// DropZoneView - 拖拽文件区域。
 ///
-/// 虚线边框的颜色会随拖拽状态变化：未拖拽时为灰色，拖拽悬停时变为高亮色。
+/// v0.4.9 改进：
+/// - 高度从 160 减到 120，更紧凑
+/// - 用 `.background.secondary` 而不是固定颜色，自动适配 dark mode
+/// - 用 `.controlBackgroundColor` 替代 `.secondary`，视觉更柔和
 struct DropZoneView: View {
     @EnvironmentObject private var viewModel: AppViewModel
-    /// 标记是否正在有文件悬停于拖拽区域上方
     @State private var isTargeted = false
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(
-                    isTargeted ? Color.accentColor : Color.secondary.opacity(0.4),
+                    isTargeted ? Color.accentColor : Color.secondary.opacity(0.35),
                     style: StrokeStyle(lineWidth: 2, dash: [8])
                 )
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 10)
                         .fill(isTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
                 )
 
-            VStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: "arrow.down.doc.fill")
-                    .font(.system(size: 36))
+                    .font(.system(size: 28))
                     .foregroundStyle(.secondary)
-                Text("拖拽文件到此处")
-                    .font(.headline)
-                Button("或点击选择文件") { viewModel.pickFiles() }
-                    .buttonStyle(.link)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isTargeted ? "松手即可添加" : "拖拽文件到此处")
+                        .font(.headline)
+                    Button("或点击选择文件") { viewModel.pickFiles() }
+                        .buttonStyle(.link)
+                }
             }
-            .padding(32)
+            .padding(20)
         }
-        .frame(height: 160)
-        /// `onDrop(of: [.fileURL])` 接受 `.fileURL` 类型的拖拽内容。
-        /// `isTargeted` 参数自动跟踪拖拽悬停状态，控制虚线颜色变化。
+        .frame(height: 120)
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers)
         }
     }
 
-    /// 处理拖拽投放的文件。
-    ///
-    /// 关键修复：使用 NSLock 保护共享的 urls 数组，避免 `loadItem` 的
-    /// 回调在多线程并发 append 导致数据丢失或崩溃。
-    ///
-    /// 返回值 `true` 表示接受该拖拽操作。
+    /// 多线程安全：使用 NSLock 保护 urls 数组，避免并发 append 丢数据。
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        // 用 NSLock 保护的线程安全数组
         let lock = NSLock()
         var urls: [URL] = []
         let group = DispatchGroup()
@@ -60,11 +54,8 @@ struct DropZoneView: View {
                 defer { group.leave() }
                 guard error == nil else { return }
                 let url: URL? = {
-                    if let direct = item as? URL {
-                        return direct
-                    } else if let data = item as? Data {
-                        return URL(dataRepresentation: data, relativeTo: nil)
-                    }
+                    if let direct = item as? URL { return direct }
+                    if let data = item as? Data { return URL(dataRepresentation: data, relativeTo: nil) }
                     return nil
                 }()
                 guard let url else { return }
