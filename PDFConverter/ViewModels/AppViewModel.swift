@@ -344,6 +344,25 @@ final class AppViewModel: ObservableObject {
         reloadDeepSeekSettings()
     }
 
+    // MARK: - v0.4.9 任务队列辅助方法
+
+    /// 查看任务是否有任意指定状态
+    func hasJobsInState(_ states: JobStatus...) -> Bool {
+        jobs.contains { states.contains($0.status) }
+    }
+
+    /// 显示任务错误的详情 Sheet
+    func showJobError(_ job: ConversionJob) {
+        guard let errorMessage = job.errorMessage else { return }
+        let details = job.stderrDetails ?? errorMessage
+        ErrorCenter.shared.showDetail(AppError(
+            severity: .error,
+            title: "\(job.type.displayName) 失败详情",
+            message: errorMessage,
+            details: details
+        ))
+    }
+
     func retryJob(_ job: ConversionJob) {
         let retry = ConversionJob(
             type: job.type,
