@@ -125,7 +125,7 @@ final class ErrorCenter: ObservableObject {
         dismissTasks[id] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(5_000_000_000))
             if !Task.isCancelled {
-                await self?.remove(id: id)
+                self?.remove(id: id)
             }
         }
     }
