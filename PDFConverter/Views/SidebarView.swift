@@ -3,9 +3,9 @@ import PDFConverterCore
 
 /// 侧边栏 — 按 `ConversionCategory` 分类显示所有转换类型。
 ///
-/// v0.4.9 改进：
-/// - 明确 sidebar 角色帮助 NavigationSplitView 识别
-/// - 改进视觉：选中态高亮、preview badge 醒目
+/// v0.5.0 修复：
+/// - 添加 `.navigationTitle` 给侧边栏列，让系统在标题栏区域预留空间，
+///   修复列表内容与窗口红绿灯按钮重叠的问题
 struct SidebarView: View {
     @EnvironmentObject private var viewModel: AppViewModel
 
@@ -28,8 +28,10 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        // v0.5.0 关键修复：侧边栏列必须有 navigationTitle，
+        // 否则 List 内容会顶到窗口标题栏，与红绿灯按钮重叠
+        .navigationTitle("转换类型")
         .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-        .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -43,7 +45,7 @@ struct SidebarView: View {
     }
 }
 
-/// v0.4.9：单行结构 + 状态徽章更醒目
+/// 单行结构 + 状态徽章
 private struct ConversionTypeRow: View {
     let type: ConversionType
     let isBackendAvailable: Bool
