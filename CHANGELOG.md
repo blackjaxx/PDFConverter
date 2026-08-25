@@ -7,7 +7,24 @@
 ### 计划中
 - 国际化：英文 UI 支持
 
-## [0.4.7] - 2026-07-15
+## [0.5.0] - 2026-08-24
+
+### 修复
+- **侧边栏与窗口红绿灯按钮重叠**：Sidebar List 缺少 `navigationTitle`，内容顶进标题栏区域
+
+### 新增
+- **设置页「存储与卸载」区域**：内置工具位置、卸载方式（拖废纸篓零残留）、钥匙串说明
+- **临时文件管理**：显示 `$TMPDIR/PDFConverter/` 残留数量 + 一键清理按钮（`TempCleaner`）
+- **Office 第三方依赖说明**：明确 App 不会代为下载 Office/iWork/LibreOffice
+
+## [0.4.9] - 2026-07-22
+
+### UI 重构
+- HSplitView 可拖拽布局替代硬编码 HStack
+- 「开始转换」移到顶部工具栏（Cmd+Return）
+- JobQueue/Sidebar/DropZone/Options 全面视觉优化
+- StatusBadge 独立组件 + JobStatus 扩展
+- 修复 macOS 14+ API 在 macOS 13 target 下编译失败
 
 ### 性能
 - **OfficeAvailability 10 秒缓存**：避免 SwiftUI body 重渲染时重复查 NSWorkspace
