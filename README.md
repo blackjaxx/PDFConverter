@@ -104,12 +104,18 @@ A: 打开「设置 → 调试日志 → 查看日志」查看最近错误，或�
 
 ### 本地构建
 
+> ⚠️ **从源码运行前必须先安装 CLI 工具**。`Resources/tools/` 在仓库里只有一个 README
+> 占位文件——真正的工具二进制是 CI 发布 DMG 时由 `Scripts/bundle-tools.sh` 打进 App 包的。
+> 直接克隆后运行，App 内没有捆绑工具；如果本机也没有通过 Homebrew 安装，
+> 启动就会提示「部分工具未安装」，PDF → 图片 / 文本、压缩、加密、OCR 等功能全部会报
+> 「未找到本地工具」错误。这是预期行为，不是 Bug。
+
 ```bash
-# 1. 安装开发依赖
+# 1. 安装开发依赖（从源码运行时必需）
 brew install poppler qpdf ghostscript tesseract
 # （可选）Office 文档转换需要 LibreOffice，但 OfficeAutomationEngine
 # 会优先尝试系统已有的 Microsoft Office 或 Apple iWork
-brew install libreoffice
+brew install --cask libreoffice
 
 # 2. 打开项目
 open PDFConverter.xcodeproj
@@ -119,7 +125,7 @@ open PDFConverter.xcodeproj
 cd Packages/PDFConverterCore && swift test
 
 # 4. 打包 DMG（本地）
-./Scripts/package-dmg.sh
+./Scripts/bundle-tools.sh && ./Scripts/package-dmg.sh
 ```
 
 ## 功能矩阵

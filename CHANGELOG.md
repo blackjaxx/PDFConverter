@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+### 修复（v0.5.1）
+- **HTML → PDF 永久挂起**：`WKWebView.navigationDelegate` 为 weak 引用，临时创建的
+  delegate 立即释放导致 `didFinish` 永不回调、continuation 永不 resume。现在渲染期间
+  强持有 webView 与 delegate，并新增 30 秒超时保护与双重 resume 防护
+- **旋转页面丢内容**：PDFKitEngine 之前在设置 `/Rotate` 的同时又交换 `mediaBox` 尺寸，
+  相当于双重旋转，实测页面顶部内容（页眉等）被直接裁掉。现在只设置 `/Rotate`（无损）
+- **Office 原生导出永远失败**：AppleScript 中 `quoted form of POSIX file` 为无效强制转换、
+  Word 参数标签 `filename` 应为 `file name`、iWork 的 `export to PDF:` 语法不合法，
+  导致 MS Office / iWork 路径全部静默失败、一律回退 LibreOffice。已改为各应用标准语法
+- **单元测试互相矛盾**（3 个失败）：`htmlToPDF` 被测试同时要求「requiresNetwork == true」
+  和「核心包必须有引擎」，与实现（本地 WebKit 渲染、引擎在 App 层注册）冲突。
+  新增 `ConversionType.engineProvidedByAppLayer` 明确 App 层托管类型的语义
+- **JPEG 质量参数未生效**：`parameters.jpegQuality` 此前从未传给 pdftoppm，
+  现通过 `-jpegopt quality=<0-100>` 生效
+- **PDF → 文本页码范围**：只填起始页（处理到最后一页）时整个范围被静默忽略
+- **qpdf 拆分结果混入输入文件**：默认输出目录为输入目录时，`hasPrefix` 过滤会把
+  输入 PDF 本身列进输出结果
+- **OCR 语言为空时任务失败**：语言列表被清空后 `-l ""` 会导致 tesseract 报错，
+  现在为空时省略 `-l` 使用默认语言
+- **ToolLocator 黑名单只写不读**：捆绑工具损坏时每次查找都重复执行子进程探测，
+  现在黑名单生效并在 `configure` 时重置
+- **功能可用却显示「预览」徽章**：`pdfToTIFF`、`htmlToPDF` 补入 `isAvailableInMVP`
+
+### 文档
+- README 本地构建章节明确：源码运行时 `Resources/tools/` 为空，必须先
+  `brew install poppler qpdf ghostscript tesseract`，否则大部分功能启动即报工具缺失
+
 ### 计划中
 - 国际化：英文 UI 支持
 
