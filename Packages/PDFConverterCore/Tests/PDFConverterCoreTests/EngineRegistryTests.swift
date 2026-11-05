@@ -4,7 +4,10 @@ import XCTest
 final class EngineRegistryTests: XCTestCase {
     func testLocalTypeHasEngine() {
         let registry = EngineRegistry()
-        for type in ConversionType.allCases where !type.requiresNetwork {
+        // 核心包注册表必须覆盖所有「本地且非 App 层托管」的类型；
+        // htmlToPDF / AI 类型由 App 层的 AppWebKitEngine / AppLLMEngine 注册
+        for type in ConversionType.allCases
+        where !type.requiresNetwork && !type.engineProvidedByAppLayer {
             XCTAssertNotNil(registry.engine(for: type), "Missing engine for \(type.rawValue)")
         }
     }
@@ -106,11 +109,12 @@ final class EngineRegistryProtocolConformanceTests: XCTestCase {
         }
     }
 
-    /// 测试：所有 ConversionType 都能找到引擎（除非标记为 requiresNetwork）
+    /// 测试：所有 ConversionType 都能找到引擎（除 requiresNetwork / App 层托管类型）
     /// 这一测试能捕捉 LibreOfficeEngine.supportedTypes() 语法错误导致 Office 类型无引擎的情况
     func testEveryNonNetworkTypeHasEngine() {
         let registry = EngineRegistry()
-        for type in ConversionType.allCases where !type.requiresNetwork {
+        for type in ConversionType.allCases
+        where !type.requiresNetwork && !type.engineProvidedByAppLayer {
             XCTAssertNotNil(registry.engine(for: type),
                             "本地类型 \(type.rawValue) 未找到引擎")
         }
@@ -132,7 +136,11 @@ final class ConversionTypeCategoryTests: XCTestCase {
         XCTAssertTrue(ConversionType.pdfAISummary.requiresNetwork)
         XCTAssertTrue(ConversionType.pdfAITranslate.requiresNetwork)
         XCTAssertTrue(ConversionType.pdfAIToMarkdown.requiresNetwork)
-        XCTAssertTrue(ConversionType.htmlToPDF.requiresNetwork)
+        // htmlToPDF 由 App 层 WebKit 引擎本地渲染，不需要网络
+        // （此前断言 requiresNetwork == true 与 UI 文案「支持本地 HTML 文件」矛盾）
+        XCTAssertFalse(ConversionType.htmlToPDF.requiresNetwork)
+        XCTAssertTrue(ConversionType.htmlToPDF.engineProvidedByAppLayer,
+                      "htmlToPDF 的引擎在 App 层注册，核心包注册表中应无引擎")
         XCTAssertFalse(ConversionType.pdfToPNG.requiresNetwork)
         XCTAssertFalse(ConversionType.wordToPDF.requiresNetwork)
     }

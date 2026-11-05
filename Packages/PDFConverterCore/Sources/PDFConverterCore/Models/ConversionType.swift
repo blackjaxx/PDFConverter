@@ -140,10 +140,28 @@ public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendabl
     }
 
     /// 该类型是否需要网络连接。
-    /// 目前只有 AI 相关功能（调用 DeepSeek API）需要网络，其他均为本地操作。
+    /// 目前只有 AI 相关功能（调用 DeepSeek API）需要网络，其他均为本地操作
+    /// （`htmlToPDF` 虽然由 App 层的 WebKit 引擎处理，但渲染是纯本地的，不需要网络）。
     /// UI 层可根据这个属性显示网络依赖提示或离线模式警告。
     public var requiresNetwork: Bool {
         category == .ai
+    }
+
+    /// 该类型的引擎是否由 App 层注册（而非核心包 ``EngineRegistry`` 默认注册）。
+    ///
+    /// 核心包的默认引擎列表只包含不依赖 AppKit/WebKit 的引擎；
+    /// `htmlToPDF`（AppWebKitEngine，依赖 WebKit）和 AI 三类（AppLLMEngine，依赖网络配置）
+    /// 的引擎实现在 App 层，由 `AppViewModel.makeDefaultRegistry()` 注册。
+    ///
+    /// 单元测试用它区分「核心包必须提供引擎的本地类型」和「App 层提供引擎的类型」，
+    /// 避免出现测试互相矛盾的断言。
+    public var engineProvidedByAppLayer: Bool {
+        switch self {
+        case .htmlToPDF, .pdfAISummary, .pdfAITranslate, .pdfAIToMarkdown:
+            return true
+        default:
+            return false
+        }
     }
 
     /// 该类型在当前 MVP（最小可行产品）版本中是否可用。
@@ -155,11 +173,14 @@ public enum ConversionType: String, CaseIterable, Codable, Identifiable, Sendabl
     /// 修复：`.pdfToWord` 和 `.pdfToExcel` 已实现（OfficeAutomationEngine +
     /// LibreOffice 回退），之前未加入列表是历史遗漏。现在补全，
     /// 否则这两个类型会被 SidebarView 标记为「预览」并禁用。
+    ///
+    /// 修复：`.pdfToTIFF`（PopplerEngine 一直支持）和 `.htmlToPDF`
+    /// （AppWebKitEngine 已实现）同样补全，避免功能可用却显示「预览」徽章。
     public var isAvailableInMVP: Bool {
         switch self {
-        case .pdfToPNG, .pdfToJPEG, .pngToPDF, .jpegToPDF, .mergePDF, .splitPDF, .rotatePDF,
+        case .pdfToPNG, .pdfToJPEG, .pdfToTIFF, .pngToPDF, .jpegToPDF, .mergePDF, .splitPDF, .rotatePDF,
              .pdfToText, .compressPDF, .wordToPDF, .excelToPDF, .pptToPDF, .ocrSearchablePDF,
-             .pdfToWord, .pdfToExcel,
+             .pdfToWord, .pdfToExcel, .htmlToPDF,
              .pdfAISummary, .pdfAITranslate, .pdfAIToMarkdown:
             return true
         default:
