@@ -42,15 +42,35 @@ final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
     /// 这是 Swift 并发中「桥接回调 API 到 async」的标准模式：
     /// - `continuation.resume(returning:)` — 成功时返回结果
     /// - `continuation.resume(throwing:)` — 失败时抛出错误
+    ///
+    /// 生命周期修复（v0.5.1）：
+    /// `WKWebView.navigationDelegate` 是 **weak** 引用——之前把
+    /// `SimpleNavigationDelegate` 创建成临时对象后，它会在闭包返回时立即被释放，
+    /// `didFinish` 永远不会回调，continuation 永远不会 resume，
+    /// 任务就永久卡在「进行中」。这里用一个静态字典在渲染期间强持有
+    /// webView 和 delegate，直到完成/失败/超时后才释放。
     @MainActor
-    private func renderPDF(html: String, baseURL: URL) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 1100))
+    private func renderPDF(html: String, baseURL: URL, timeout: TimeInterval = 30) async throws -> Data {
+        return try await withCheckedThrowingContinuation { continuation in
+            let sessionID = UUID()
+            // 防止双重 resume（didFail 之后 didFinish 不该再来，但超时与回调可能竞争）
+            var resumed = false
 
-            webView.navigationDelegate = SimpleNavigationDelegate(
-                onError: { continuation.resume(throwing: $0) },
+            let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 1100))
+            let delegate = SimpleNavigationDelegate(
+                onError: { [weak webView] error in
+                    guard !resumed else { return }
+                    resumed = true
+                    RenderSession.release(sessionID: sessionID)
+                    webView?.stopLoading()
+                    continuation.resume(throwing: error)
+                },
                 onFinish: {
+                    guard !resumed else { return }
                     webView.createPDF(configuration: WKPDFConfiguration()) { result in
+                        guard !resumed else { return }
+                        resumed = true
+                        RenderSession.release(sessionID: sessionID)
                         switch result {
                         case .success(let data):
                             continuation.resume(returning: data)
@@ -61,8 +81,50 @@ final class AppWebKitEngine: ConversionEngine, @unchecked Sendable {
                 }
             )
 
+            // 强持有直到渲染结束，防止 webView / delegate 被提前释放
+            RenderSession.retain(sessionID: sessionID, webView: webView, delegate: delegate)
+
+            // 超时保护：页面引用了无法访问的远程资源时会一直加载，
+            // 没有超时的话任务会永久挂在「进行中」
+            Task { @MainActor [weak webView] in
+                try? await Task.sleep(for: .seconds(timeout))
+                guard !resumed else { return }
+                resumed = true
+                RenderSession.release(sessionID: sessionID)
+                webView?.stopLoading()
+                continuation.resume(throwing: ConversionError.invalidInput(
+                    "HTML 渲染超时（\(Int(timeout)) 秒）。请检查 HTML 是否引用了无法访问的远程资源。"
+                ))
+            }
+
             webView.loadHTMLString(html, baseURL: baseURL)
         }
+    }
+}
+
+/// 一次 PDF 渲染会话的强引用容器。
+///
+/// 解决 `WKWebView.navigationDelegate`（weak）导致的 delegate 提前释放问题：
+/// 会话期间由 `activeSessions` 字典强持有 webView 和 delegate，
+/// 渲染结束（完成 / 失败 / 超时）后调用 `release` 释放。
+@MainActor
+private final class RenderSession {
+    private let webView: WKWebView
+    private let delegate: SimpleNavigationDelegate
+
+    private static var active: [UUID: RenderSession] = [:]
+
+    private init(webView: WKWebView, delegate: SimpleNavigationDelegate) {
+        self.webView = webView
+        self.delegate = delegate
+    }
+
+    static func retain(sessionID: UUID, webView: WKWebView, delegate: SimpleNavigationDelegate) {
+        active[sessionID] = RenderSession(webView: webView, delegate: delegate)
+    }
+
+    static func release(sessionID: UUID) {
+        active.removeValue(forKey: sessionID)
     }
 }
 
