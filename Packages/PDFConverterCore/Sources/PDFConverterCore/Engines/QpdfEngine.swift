@@ -55,7 +55,9 @@ public struct QpdfEngine: ConversionEngine {
         let dir = out.deletingLastPathComponent()
         let stem = input.deletingPathExtension().lastPathComponent
         let outputs = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix(stem) && $0.pathExtension == "pdf" }
+            // v0.5.1 修复：默认输出目录是输入文件所在目录，
+            // hasPrefix(stem) 会把输入 PDF 本身也匹配进结果列表，这里排除
+            .filter { $0.lastPathComponent.hasPrefix(stem) && $0.pathExtension == "pdf" && $0 != input }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         guard !outputs.isEmpty else {

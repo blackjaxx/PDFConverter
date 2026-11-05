@@ -79,8 +79,11 @@ public struct PDFKitEngine: ConversionEngine {
     /// 旋转角度从 `parameters.rotationDegrees` 获取，然后对每页的 `rotation` 属性
     /// 进行累加并取模 360。注意：这是**增量旋转**——每次旋转在当前已有角度的基础上叠加。
     ///
-    /// 旋转 90° 或 270° 时，页面宽度与高度在逻辑上互换，因此需要同步调整 `mediaBox`
-    /// 的 bounds，否则部分阅读器会显示页面裁切或方向异常。
+    /// v0.5.1 修复：只设置 `page.rotation`（写入 PDF 的 `/Rotate` 标志），
+    /// 不再手动交换 `mediaBox` 尺寸。之前的做法相当于「旋转了两次」：
+    /// 内容坐标系被交换后超出新边界的部分（如页面顶部的页眉）会被**直接裁掉**，
+    /// 实测确认存在内容丢失。`/Rotate` 由阅读器在显示时处理方向，
+    /// 页面内容保持原样，这是无损旋转的标准做法。
     private func rotatePDF(context: ConversionContext) async throws -> ConversionResult {
         guard let input = context.job.inputURLs.first else {
             throw ConversionError.invalidInput("请选择 PDF 文件")
@@ -92,18 +95,7 @@ public struct PDFKitEngine: ConversionEngine {
         let degrees = context.job.parameters.rotationDegrees
         for i in 0..<doc.pageCount {
             guard let page = doc.page(at: i) else { continue }
-            let rotation = (page.rotation + degrees) % 360
-            page.rotation = rotation
-
-            let bounds = page.bounds(for: .mediaBox)
-            if rotation == 90 || rotation == 270 {
-                page.setBounds(
-                    CGRect(x: bounds.origin.x, y: bounds.origin.y, width: bounds.height, height: bounds.width),
-                    for: .mediaBox
-                )
-            } else {
-                page.setBounds(bounds, for: .mediaBox)
-            }
+            page.rotation = (page.rotation + degrees) % 360
         }
 
         let out = try context.makeOutputURL(suffix: "_\(context.job.type.rawValue)", extension: "pdf")

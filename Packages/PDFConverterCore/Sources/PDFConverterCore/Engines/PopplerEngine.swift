@@ -68,7 +68,16 @@ public struct PopplerEngine: ConversionEngine {
         let inputStem = input.deletingPathExtension().lastPathComponent
         let prefix = context.workDirectory.appendingPathComponent(inputStem).path
 
-        var args = ["-\(format)", "-r", dpi, input.path, prefix]
+        var args: [String] = []
+
+        // v0.5.1 修复：parameters.jpegQuality 此前从未生效。
+        // pdftoppm 的 JPEG 质量通过 `-jpegopt quality=<0-100>` 控制。
+        if context.job.type == .pdfToJPEG {
+            let quality = max(0, min(100, Int((context.job.parameters.jpegQuality * 100).rounded())))
+            args += ["-jpegopt", "quality=\(quality)"]
+        }
+
+        args += ["-\(format)", "-r", dpi, input.path, prefix]
 
         // pdftoppm 的参数顺序是 [options] input output-prefix
         if let range = context.job.parameters.pageRange {
@@ -130,8 +139,13 @@ public struct PopplerEngine: ConversionEngine {
         let out = try context.makeOutputURL(suffix: "_text", extension: "txt")
 
         var args = [input.path, out.path]
-        if let range = context.job.parameters.pageRange, let end = range.end {
-            args = ["-f", String(range.start), "-l", String(end), input.path, out.path]
+        // v0.5.1 修复：只填起始页（end 为 nil 表示处理到最后一页）时，
+        // 之前会把整个页码范围静默忽略；现在 -f 和 -l 分别独立处理
+        if let range = context.job.parameters.pageRange {
+            args = ["-f", String(range.start), input.path, out.path]
+            if let end = range.end {
+                args.insert(String(end), at: 2)
+            }
         }
 
         await JobOrchestrator.shared.updateProgress(id: context.job.id, progress: 0.3)

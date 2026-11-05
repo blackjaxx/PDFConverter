@@ -90,39 +90,65 @@ public struct OfficeAutomationEngine: ConversionEngine {
         guard let bundleID = msOfficeBundleIDs[type] else { return nil }
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil else { return nil }
 
-        let appName: String
-        let saveFormat: String
-        switch type {
-        case .wordToPDF:
-            appName = "Microsoft Word"
-            saveFormat = "format PDF"
-        case .excelToPDF:
-            appName = "Microsoft Excel"
-            saveFormat = "PDF"
-        case .pptToPDF:
-            appName = "Microsoft PowerPoint"
-            saveFormat = "PDF"
-        default:
-            return nil
-        }
-
         let outputPath = outputDir.appendingPathComponent(stem + "_converted.pdf").path
 
         // AppleScript: 打开文件 → 导出为 PDF → 关闭（不保存原文件）
         // 外层 try 捕获脚本级异常（如应用版本不兼容、文件打不开等）
-        // 路径用 quoted form of POSIX file 安全转义（处理空格、引号、特殊字符）
-        let script = """
-        try
-            tell application "\(appName)"
-                set doc to open (quoted form of POSIX file "\(appleScriptEscape(input.path))")
-                save as doc filename "\(appleScriptEscape(outputPath))" file format \(saveFormat)
-                close doc saving no
-            end tell
-            return "OK"
-        on error errMsg
-            return "ERROR: " & errMsg
-        end try
-        """
+        //
+        // v0.5.1 修复：之前的脚本把 `quoted form of` 用在 `POSIX file` 对象上
+        // （该强制转换只对文本有效），且 Word 的参数标签写成了 `filename`
+        // （sdef 中是 `file name`），导致 MS Office 路径永远失败、
+        // 全部回退 LibreOffice。现在改为各应用文档中的标准语法：
+        // - Word: `save as <doc> file name <path> file format format PDF`
+        // - Excel: `save as <sheet> filename <path> file format PDF file format`
+        // - PowerPoint: `save <presentation> in <path> as save as PDF`
+        // 打开文件统一用 `open POSIX file "<path>"`。
+        let script: String
+        switch type {
+        case .wordToPDF:
+            script = """
+            try
+                tell application "Microsoft Word"
+                    open POSIX file "\(appleScriptEscape(input.path))"
+                    set doc to active document
+                    save as doc file name "\(appleScriptEscape(outputPath))" file format format PDF
+                    close doc saving no
+                end tell
+                return "OK"
+            on error errMsg
+                return "ERROR: " & errMsg
+            end try
+            """
+        case .excelToPDF:
+            script = """
+            try
+                tell application "Microsoft Excel"
+                    open POSIX file "\(appleScriptEscape(input.path))"
+                    set doc to active sheet
+                    save as doc filename "\(appleScriptEscape(outputPath))" file format PDF file format
+                end tell
+                return "OK"
+            on error errMsg
+                return "ERROR: " & errMsg
+            end try
+            """
+        case .pptToPDF:
+            script = """
+            try
+                tell application "Microsoft PowerPoint"
+                    open POSIX file "\(appleScriptEscape(input.path))"
+                    set doc to active presentation
+                    save doc in "\(appleScriptEscape(outputPath))" as save as PDF
+                    close doc saving no
+                end tell
+                return "OK"
+            on error errMsg
+                return "ERROR: " & errMsg
+            end try
+            """
+        default:
+            return nil
+        }
 
         let result = try await ProcessRunner.run(
             executable: URL(fileURLWithPath: "/usr/bin/osascript"),
@@ -139,17 +165,17 @@ public struct OfficeAutomationEngine: ConversionEngine {
         }
 
         return ConversionResult(outputURLs: [outputURL],
-                                logs: "[OfficeAutomation] Microsoft \(appName) 导出成功")
+                                logs: "[OfficeAutomation] Microsoft Office 导出成功")
     }
 
     // MARK: - Apple iWork (AppleScript)
 
     /// 尝试通过 AppleScript 调用 Apple iWork 套件导出 PDF。
     ///
-    /// iWork 的 AppleScript API 与 Microsoft Office 不同：
-    /// - Pages/Keynote: `export to PDF: file "<path>"`
-    /// - Numbers: `export as PDF: file "<path>"`（参数名不同）
-    /// - 全部不需要指定 format，默认就是 PDF
+    /// v0.5.1 修复：之前的 `export to PDF: file "..."` / `export as PDF: file "..."`
+    /// 不是合法的 iWork AppleScript 语法（会直接脚本错误），且 `quoted form of`
+    /// 用在 `POSIX file` 对象上无效。iWork 三件套统一使用标准导出语法：
+    /// `export <document> to POSIX file "<path>" as PDF`
     /// - Returns: 成功则返回 `ConversionResult`，失败返回 `nil`
     private func tryAppleIWork(
         input: URL,
@@ -161,17 +187,13 @@ public struct OfficeAutomationEngine: ConversionEngine {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil else { return nil }
 
         let appName: String
-        let exportVerb: String
         switch type {
         case .wordToPDF:
             appName = "Pages"
-            exportVerb = "export to PDF"
         case .excelToPDF:
             appName = "Numbers"
-            exportVerb = "export as PDF"
         case .pptToPDF:
             appName = "Keynote"
-            exportVerb = "export to PDF"
         default:
             return nil
         }
@@ -181,8 +203,8 @@ public struct OfficeAutomationEngine: ConversionEngine {
         let script = """
         try
             tell application "\(appName)"
-                set doc to open (quoted form of POSIX file "\(appleScriptEscape(input.path))")
-                \(exportVerb): file "\(appleScriptEscape(outputPath))"
+                set doc to open POSIX file "\(appleScriptEscape(input.path))"
+                export doc to POSIX file "\(appleScriptEscape(outputPath))" as PDF
                 close doc saving no
             end tell
             return "OK"
@@ -218,8 +240,8 @@ public struct OfficeAutomationEngine: ConversionEngine {
     /// - 回车 → `\r`
     /// - Tab → `\t`
     ///
-    /// 与 `quoted form of POSIX file` 配合使用时，主要需要处理引号和反斜杠，
-    /// 否则路径中包含 `"` 会破坏 AppleScript 字符串解析。
+    /// 路径以 `"\(escaped)"` 形式嵌入 AppleScript 字符串字面量，
+    /// 主要需要处理引号和反斜杠，否则路径中包含 `"` 会破坏 AppleScript 字符串解析。
     private func appleScriptEscape(_ s: String) -> String {
         var result = ""
         result.reserveCapacity(s.count)

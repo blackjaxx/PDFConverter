@@ -39,6 +39,7 @@ public final class ToolLocator: @unchecked Sendable {
         lock.withLock {
             self.toolsRoot = toolsRoot
             cache.removeAll()
+            blacklisted.removeAll()
         }
     }
 
@@ -68,8 +69,10 @@ public final class ToolLocator: @unchecked Sendable {
                 return cached
             }
 
-            // 优先查找 App 内捆绑的工具——但必须真的能执行
-            if let root = toolsRoot {
+            // 优先查找 App 内捆绑的工具——但必须真的能执行。
+            // v0.5.1：blacklist 此前只写不读，捆绑路径损坏时每次查找都会
+            // 重复执行 canExecute 子进程；现在黑名单生效，直接跳到 PATH 回退
+            if let root = toolsRoot, !blacklisted.contains(tool.name) {
                 let bundled = root.appendingPathComponent(tool.relativePath)
                 if FileManager.default.isExecutableFile(atPath: bundled.path), canExecute(bundled) {
                     cache[tool.name] = bundled

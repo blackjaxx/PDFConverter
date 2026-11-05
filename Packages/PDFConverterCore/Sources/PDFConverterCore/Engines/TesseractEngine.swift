@@ -73,10 +73,18 @@ public struct TesseractEngine: ConversionEngine {
         // Tesseract 参数：
         // input.pdf  → 输入文件
         // outBase    → 输出基础名（Tesseract 自动加 .pdf 扩展名）
-        // -l langs   → OCR 识别语言
+        // -l langs   → OCR 识别语言（v0.5.1：语言列表为空时省略 -l，
+        //              交给 Tesseract 使用默认语言，避免 `-l ""` 直接报错）
         // pdf        → 输出类型
-        let langs = context.job.parameters.ocrLanguages.joined(separator: "+")
-        let args = [input.path, outBase.path, "-l", langs, "pdf"]
+        var args = [input.path, outBase.path]
+        let langs = context.job.parameters.ocrLanguages
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "+")
+        if !langs.isEmpty {
+            args += ["-l", langs]
+        }
+        args.append("pdf")
         _ = try await ProcessRunner.runChecked(
             executable: tool,
             arguments: args,
