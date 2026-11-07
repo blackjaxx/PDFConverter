@@ -4,7 +4,12 @@
 
 ## [Unreleased]
 
-### 修复（v0.5.1）
+### 计划中
+- 国际化：英文 UI 支持
+
+## [0.5.1] - 2026-11-07
+
+### 修复
 - **HTML → PDF 永久挂起**：`WKWebView.navigationDelegate` 为 weak 引用，临时创建的
   delegate 立即释放导致 `didFinish` 永不回调、continuation 永不 resume。现在渲染期间
   强持有 webView 与 delegate，并新增 30 秒超时保护与双重 resume 防护
@@ -30,9 +35,7 @@
 ### 文档
 - README 本地构建章节明确：源码运行时 `Resources/tools/` 为空，必须先
   `brew install poppler qpdf ghostscript tesseract`，否则大部分功能启动即报工具缺失
-
-### 计划中
-- 国际化：英文 UI 支持
+- App 版本号 MARKETING_VERSION 0.1.0 → 0.5.1（此前历次 Release 均未同步）
 
 ## [0.5.0] - 2026-08-24
 
