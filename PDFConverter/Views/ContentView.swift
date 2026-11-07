@@ -35,25 +35,28 @@ struct ContentView: View {
                     max: 320
                 )
         } detail: {
-            VStack(spacing: 0) {
-                ErrorBannerList(center: errorCenter)
+            // v0.5.2 关键修复：详情列不能再用 VStack{横幅 + HSplitView} 包裹。
+            // macOS 26+（Liquid Glass）下，「固定高度横幅 + 可无限扩展的
+            // HSplitView」组合会使窗口标题栏条带在侧边栏列表滚动时塌陷，
+            // 列表行随之全出血绘制到红绿灯区域（用户实测的布局重叠）。
+            // 修复：HSplitView 直接作为 detail 根，错误横幅改为 overlay 悬浮层。
+            HSplitView {
+                ConversionPanelView()
+                    .frame(minWidth: 360, idealWidth: 480)
+                    .layoutPriority(1)
 
-                // HSplitView 提供原生 macOS 拖拽 splitter
-                HSplitView {
-                    ConversionPanelView()
-                        .frame(minWidth: 360, idealWidth: 480)
-                        .layoutPriority(1)
-
-                    JobQueueView()
-                        .frame(
-                            minWidth: 280,
-                            idealWidth: 340,
-                            maxWidth: 480
-                        )
-                        .layoutPriority(0)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                JobQueueView()
+                    .frame(
+                        minWidth: 280,
+                        idealWidth: 340,
+                        maxWidth: 480
+                    )
+                    .layoutPriority(0)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .overlay(alignment: .top) {
+            ErrorBannerList(center: errorCenter)
         }
         .navigationTitle(viewModel.selectedType.displayName)
         .navigationSubtitle(viewModel.engineLabel(for: viewModel.selectedType))
