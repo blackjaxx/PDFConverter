@@ -178,10 +178,15 @@
            box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* 全局 * {margin:0} 会覆盖 <dialog> 的 UA 默认 margin:auto，必须显式恢复居中 */
   dialog { border: none; border-radius: var(--radius); padding: 24px; width: 400px;
-           box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+           box-shadow: 0 12px 40px rgba(0,0,0,.2);
+           position: fixed; inset: 0; margin: auto; height: fit-content; }
   dialog::backdrop { background: rgba(15,18,25,.4); }
-  dialog h3 { margin-bottom: 10px; font-size: 15px; }
+  .dlg-header { display: flex; align-items: center; justify-content: space-between;
+                margin-bottom: 12px; }
+  .dlg-header h3 { margin-bottom: 0; font-size: 15px; }
+  .dlg-header .iconbtn { font-size: 16px; }
   dialog p { font-size: 12.5px; color: var(--secondary); margin-bottom: 12px; line-height: 1.7; }
   dialog input { width: 100%; padding: 9px 12px; border: 1px solid var(--border);
                  border-radius: 8px; margin-bottom: 14px; font-size: 13px; }
@@ -246,7 +251,10 @@
 </div>
 
 <dialog id="keyDialog">
-  <h3>DeepSeek API Key</h3>
+  <div class="dlg-header">
+    <h3>DeepSeek API Key</h3>
+    <button class="iconbtn" id="keyClose" title="关闭 (Esc)">✕</button>
+  </div>
   <p>AI 摘要 / 翻译 / 转 Markdown 需要 DeepSeek Key（<a class="link" href="https://platform.deepseek.com/api_keys" target="_blank">获取</a>）。
      Key 仅保存在你浏览器的 localStorage，并只在你提交 AI 任务时随请求发送给本服务。</p>
   <input type="password" id="keyInput" placeholder="sk-...">
@@ -666,6 +674,10 @@ $('toolRefresh').onclick = async e => {
 };
 
 /* ── Key 设置 ── */
+$('keyClose').onclick = () => $('keyDialog').close();
+$('keyDialog').addEventListener('click', e => {
+  if (e.target === $('keyDialog')) $('keyDialog').close();  // 点击遮罩关闭
+});
 $('keySave').onclick = () => {
   const v = $('keyInput').value.trim();
   if (v) localStorage.setItem('deepseek_key', v);
