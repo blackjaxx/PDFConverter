@@ -1,5 +1,6 @@
 """工具定位与子进程执行 —— 桌面版 ToolLocator / ProcessRunner 的 Web 移植。"""
 import asyncio
+import os
 import shutil
 from dataclasses import dataclass
 
@@ -60,8 +61,14 @@ INSTALL_INFO: dict[str, dict[str, str]] = {
                    "url": "https://playwright.dev/python/docs/intro", "label": "Playwright"},
 }
 
-# PATH 之外补充常见 Homebrew 路径（本地 macOS 开发时与桌面版行为一致）
-_EXTRA_DIRS = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin", "/bin"]
+# PATH 之外补充常见安装目录：macOS Homebrew + Windows 常见位置
+_EXTRA_DIRS = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin", "/bin",
+               "C:\\Program Files\\LibreOffice\\program",
+               "C:\\Program Files (x86)\\LibreOffice\\program",
+               "C:\\Program Files\\gs\\bin"]
+
+# Windows 上部分工具的可执行文件名不同（如 Ghostscript 控制台版叫 gswin64c）
+_WIN_ALIASES = {"gs": ["gswin64c", "gswin32c"]}
 _cache: dict[str, str | None] = {}
 
 
@@ -69,13 +76,17 @@ def find_tool(name: str, refresh: bool = False) -> str | None:
     """查找可执行文件并缓存（对应 ToolLocator.path，去掉了捆绑目录一级）。"""
     if not refresh and name in _cache:
         return _cache[name]
-    path = shutil.which(name)
-    if not path:
-        for d in _EXTRA_DIRS:
-            candidate = f"{d}/{name}"
-            if shutil.which(candidate):
-                path = candidate
-                break
+    path = None
+    for cand in [name] + _WIN_ALIASES.get(name, []):
+        path = shutil.which(cand)
+        if not path:
+            for d in _EXTRA_DIRS:
+                candidate = os.path.join(d, cand)
+                if shutil.which(candidate):
+                    path = candidate
+                    break
+        if path:
+            break
     _cache[name] = path
     return path
 

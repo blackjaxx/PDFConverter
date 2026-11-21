@@ -256,7 +256,7 @@ async def _soffice_convert(ctx: JobContext) -> list[Path]:
     profile = ctx.work_dir / "lo_profile"
     outbox = ctx.work_dir / "lo_output"
     outbox.mkdir(parents=True, exist_ok=True)
-    args = ["--headless", f"-env:UserInstallation=file://{profile}",
+    args = ["--headless", f"-env:UserInstallation={profile.as_uri()}",
             "--convert-to", target, "--outdir", str(outbox), str(input)]
     await run_checked([soffice] + args)
     outputs = sorted(outbox.glob(f"*.{target}"))

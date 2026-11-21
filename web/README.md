@@ -33,6 +33,24 @@ uvicorn app.main:app --port 8000
 python run.py --port 8000
 ```
 
+## Windows 上使用
+
+**作为客户端**：B/S 架构与操作系统无关——服务器跑在任何地方（Linux / macOS / NAS / 云主机），
+Windows 上用浏览器打开服务地址即可，无需安装任何东西。
+
+**把服务端跑在 Windows 上**（不装 Docker 时的原生方案）：
+
+1. 安装 Python 3.10+，`pip install -r requirements.txt`
+2. 安装转换工具（服务会自动识别 PATH 与常见安装目录，Windows 上的 `gswin64c` 也能识别）：
+   - Poppler：[poppler-windows release](https://github.com/oschwartz10612/poppler-windows/releases) 解压后把 `bin` 加入 PATH
+   - qpdf：[官网下载](https://qpdf.readthedocs.io/en/stable/installation.html)
+   - Ghostscript：[官网安装包](https://www.ghostscript.com/download.html)
+   - Tesseract：[UB-Mannheim 安装包](https://github.com/UB-Mannheim/tesseract/wiki)（勾选中文语言包）
+   - LibreOffice：[官网安装](https://www.libreoffice.org/download/)
+3. `python run.py --port 8000`（局域网访问加 `--host 0.0.0.0`）
+
+也可以直接用 **Docker Desktop / WSL2** 跑镜像，效果与 Linux 相同。
+
 ## 功能对照（与桌面版）
 
 | 功能 | 引擎 | 说明 |
