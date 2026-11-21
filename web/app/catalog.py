@@ -30,6 +30,8 @@ PARAM_DEFS: dict[str, list[dict[str, Any]]] = {
     "pdfToImage": [
         {"key": "dpi", "label": "DPI", "type": "stepper", "min": 72, "max": 600, "step": 25, "default": 150},
         {"key": "pageRange", "label": "页码范围", "type": "range"},
+        {"key": "jpegQuality", "label": "JPEG 质量", "type": "stepper", "min": 10, "max": 100,
+         "step": 5, "default": 85, "onlyFor": "pdfToJPEG", "unit": "%"},
     ],
     "imageToPDF": [],
     "pdfToText": [{"key": "pageRange", "label": "页码范围", "type": "range"}],
@@ -38,7 +40,8 @@ PARAM_DEFS: dict[str, list[dict[str, Any]]] = {
     "htmlToPDF": [],
     "compress": [
         {"key": "compressionLevel", "label": "压缩档位", "type": "select",
-         "options": [["screen", "屏幕"], ["ebook", "电子书"], ["printer", "打印"], ["prepress", "印前"]],
+         "options": [["screen", "屏幕（最小）"], ["ebook", "电子书（推荐）"], ["printer", "打印"],
+                     ["prepress", "印前"], ["default", "默认（接近原质量）"]],
          "default": "ebook"},
     ],
     "merge": [],
@@ -47,11 +50,17 @@ PARAM_DEFS: dict[str, list[dict[str, Any]]] = {
         {"key": "rotationDegrees", "label": "旋转角度", "type": "select",
          "options": [[90, "90°"], [180, "180°"], [270, "270°"]], "default": 90},
     ],
-    "watermark": [{"key": "watermarkText", "label": "水印文字", "type": "text", "placeholder": "请输入水印文字"}],
+    "watermark": [
+        {"key": "watermarkText", "label": "水印文字", "type": "text", "placeholder": "请输入水印文字"},
+        {"key": "watermarkFontSize", "label": "字号", "type": "stepper", "min": 12, "max": 72,
+         "step": 4, "default": 24},
+    ],
     "encrypt": [{"key": "password", "label": "密码", "type": "password"}],
     "decrypt": [{"key": "password", "label": "密码", "type": "password"}],
-    "ocr": [{"key": "ocrLanguages", "label": "OCR 语言", "type": "text", "default": "chi_sim+eng",
-             "placeholder": "chi_sim+eng"}],
+    "ocr": [{"key": "ocrLanguages", "label": "OCR 语言", "type": "chips",
+             "default": "chi_sim+eng", "placeholder": "chi_sim+eng",
+             "options": [["chi_sim+eng", "简体+英文"], ["eng", "纯英文"],
+                         ["chi_tra+eng", "繁体+英文"], ["jpn+eng", "日文+英文"]]}],
     "ai": [
         {"key": "aiTargetLanguage", "label": "翻译语言", "type": "select",
          "options": [["简体中文", "简体中文"], ["English", "English"], ["日本語", "日本語"]],
@@ -74,36 +83,37 @@ class ConversionType:
     tool: str | None = None     # 依赖的 CLI 工具（None = 纯 Python / 特殊判断）
     tool2: str | None = None    # 部分类型依赖两个工具（如 OCR）
     needs_key: bool = False     # 是否需要 DeepSeek Key
+    accept: list[str] = field(default_factory=list)  # 允许的文件扩展名（空 = 不限）
 
     def params(self) -> list[dict[str, Any]]:
         return PARAM_DEFS.get(self.category, [])
 
 
 TYPES: list[ConversionType] = [
-    ConversionType("pdfToPNG", "pdfToImage", "PDF → PNG", "poppler", "Poppler", tool="pdftoppm"),
-    ConversionType("pdfToJPEG", "pdfToImage", "PDF → JPEG", "poppler", "Poppler", tool="pdftoppm"),
-    ConversionType("pdfToTIFF", "pdfToImage", "PDF → TIFF", "poppler", "Poppler", tool="pdftoppm"),
-    ConversionType("pngToPDF", "imageToPDF", "PNG → PDF", "pymupdf", "PyMuPDF", multiple=True),
-    ConversionType("jpegToPDF", "imageToPDF", "JPEG → PDF", "pymupdf", "PyMuPDF", multiple=True),
-    ConversionType("pdfToText", "pdfToText", "PDF → 文本", "poppler", "Poppler", tool="pdftotext"),
-    ConversionType("wordToPDF", "officeToPDF", "Word → PDF", "libreOffice", "LibreOffice", tool="soffice"),
-    ConversionType("excelToPDF", "officeToPDF", "Excel → PDF", "libreOffice", "LibreOffice", tool="soffice"),
-    ConversionType("pptToPDF", "officeToPDF", "PPT → PDF", "libreOffice", "LibreOffice", tool="soffice"),
-    ConversionType("pdfToWord", "pdfToOffice", "PDF → Word", "libreOffice", "LibreOffice", tool="soffice"),
-    ConversionType("pdfToExcel", "pdfToOffice", "PDF → Excel", "libreOffice", "LibreOffice", tool="soffice"),
-    ConversionType("htmlToPDF", "htmlToPDF", "HTML → PDF", "playwright", "Playwright"),
-    ConversionType("compressPDF", "compress", "压缩 PDF", "ghostscript", "Ghostscript", tool="gs"),
-    ConversionType("mergePDF", "merge", "合并 PDF", "pymupdf", "PyMuPDF", multiple=True),
-    ConversionType("splitPDF", "split", "拆分 PDF", "qpdf", "qpdf", tool="qpdf"),
-    ConversionType("rotatePDF", "rotate", "旋转页面", "pymupdf", "PyMuPDF"),
-    ConversionType("watermarkPDF", "watermark", "添加水印", "pymupdf", "PyMuPDF"),
-    ConversionType("encryptPDF", "encrypt", "加密 PDF", "qpdf", "qpdf", tool="qpdf"),
-    ConversionType("decryptPDF", "decrypt", "解密 PDF", "qpdf", "qpdf", tool="qpdf"),
+    ConversionType("pdfToPNG", "pdfToImage", "PDF → PNG", "poppler", "Poppler", tool="pdftoppm", accept=[".pdf"]),
+    ConversionType("pdfToJPEG", "pdfToImage", "PDF → JPEG", "poppler", "Poppler", tool="pdftoppm", accept=[".pdf"]),
+    ConversionType("pdfToTIFF", "pdfToImage", "PDF → TIFF", "poppler", "Poppler", tool="pdftoppm", accept=[".pdf"]),
+    ConversionType("pngToPDF", "imageToPDF", "PNG → PDF", "pymupdf", "PyMuPDF", multiple=True, accept=[".png"]),
+    ConversionType("jpegToPDF", "imageToPDF", "JPEG → PDF", "pymupdf", "PyMuPDF", multiple=True, accept=[".jpg", ".jpeg"]),
+    ConversionType("pdfToText", "pdfToText", "PDF → 文本", "poppler", "Poppler", tool="pdftotext", accept=[".pdf"]),
+    ConversionType("wordToPDF", "officeToPDF", "Word → PDF", "libreOffice", "LibreOffice", tool="soffice", accept=[".docx", ".doc", ".rtf", ".odt", ".txt"]),
+    ConversionType("excelToPDF", "officeToPDF", "Excel → PDF", "libreOffice", "LibreOffice", tool="soffice", accept=[".xlsx", ".xls", ".csv", ".ods"]),
+    ConversionType("pptToPDF", "officeToPDF", "PPT → PDF", "libreOffice", "LibreOffice", tool="soffice", accept=[".pptx", ".ppt", ".odp"]),
+    ConversionType("pdfToWord", "pdfToOffice", "PDF → Word", "libreOffice", "LibreOffice", tool="soffice", accept=[".pdf"]),
+    ConversionType("pdfToExcel", "pdfToOffice", "PDF → Excel", "libreOffice", "LibreOffice", tool="soffice", accept=[".pdf"]),
+    ConversionType("htmlToPDF", "htmlToPDF", "HTML → PDF", "playwright", "Playwright", accept=[".html", ".htm"]),
+    ConversionType("compressPDF", "compress", "压缩 PDF", "ghostscript", "Ghostscript", tool="gs", accept=[".pdf"]),
+    ConversionType("mergePDF", "merge", "合并 PDF", "pymupdf", "PyMuPDF", multiple=True, accept=[".pdf"]),
+    ConversionType("splitPDF", "split", "拆分 PDF", "qpdf", "qpdf", tool="qpdf", accept=[".pdf"]),
+    ConversionType("rotatePDF", "rotate", "旋转页面", "pymupdf", "PyMuPDF", accept=[".pdf"]),
+    ConversionType("watermarkPDF", "watermark", "添加水印", "pymupdf", "PyMuPDF", accept=[".pdf"]),
+    ConversionType("encryptPDF", "encrypt", "加密 PDF", "qpdf", "qpdf", tool="qpdf", accept=[".pdf"]),
+    ConversionType("decryptPDF", "decrypt", "解密 PDF", "qpdf", "qpdf", tool="qpdf", accept=[".pdf"]),
     ConversionType("ocrSearchablePDF", "ocr", "OCR 可搜索 PDF", "tesseract", "Tesseract",
-                   tool="tesseract", tool2="pdftoppm"),
-    ConversionType("pdfAISummary", "ai", "AI 摘要 (DeepSeek)", "deepSeek", "DeepSeek", needs_key=True),
-    ConversionType("pdfAITranslate", "ai", "AI 翻译 (DeepSeek)", "deepSeek", "DeepSeek", needs_key=True),
-    ConversionType("pdfAIToMarkdown", "ai", "AI → Markdown (DeepSeek)", "deepSeek", "DeepSeek", needs_key=True),
+                   tool="tesseract", tool2="pdftoppm", accept=[".pdf"]),
+    ConversionType("pdfAISummary", "ai", "AI 摘要 (DeepSeek)", "deepSeek", "DeepSeek", needs_key=True, accept=[".pdf"]),
+    ConversionType("pdfAITranslate", "ai", "AI 翻译 (DeepSeek)", "deepSeek", "DeepSeek", needs_key=True, accept=[".pdf"]),
+    ConversionType("pdfAIToMarkdown", "ai", "AI → Markdown (DeepSeek)", "deepSeek", "DeepSeek", needs_key=True, accept=[".pdf"]),
 ]
 
 TYPES_BY_KEY = {t.key: t for t in TYPES}
@@ -132,5 +142,8 @@ def type_brief(t: ConversionType, tool_status: dict[str, bool], has_server_key: 
         "available": available,
         "unavailableReason": reason,
         "needsKey": t.needs_key,
+        "tool": t.tool,
+        "tool2": t.tool2,
+        "accept": t.accept,
         "params": t.params(),
     }

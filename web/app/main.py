@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .catalog import CATEGORIES, TYPES_BY_KEY, type_brief
 from .config import ACCESS_TOKEN, DATA_DIR, DEEPSEEK_API_KEY, OUTPUT_DIR, UPLOAD_LIMIT_MB, WEB_DIR
 from .orchestrator import orchestrator
-from .tools import find_tool
+from .tools import INSTALL_INFO, find_tool
 
 app = FastAPI(title="PDF Converter Web", version="1.0.0")
 
@@ -60,7 +60,8 @@ async def health():
 
 @app.get("/api/tools")
 async def api_tools(_: None = Depends(require_token)):
-    return {"tools": tool_status(), "hasServerKey": bool(DEEPSEEK_API_KEY)}
+    return {"tools": tool_status(), "hasServerKey": bool(DEEPSEEK_API_KEY),
+            "install": INSTALL_INFO}
 
 
 @app.get("/api/types")
@@ -97,6 +98,14 @@ async def create_job(request: Request,
         raise HTTPException(400, "请选择文件")
 
     file_list = [f for f in files if f.filename]
+    # 扩展名前置校验：给出清晰错误，而不是让转换引擎在半路失败
+    if t.accept:
+        for f in file_list:
+            ext = Path(f.filename or "").suffix.lower()
+            if ext not in t.accept:
+                raise HTTPException(
+                    400,
+                    f"{t.display} 不支持 {ext or '无扩展名'} 文件（支持: {' '.join(t.accept)}）")
     if len(file_list) > 1 and not t.multiple:
         raise HTTPException(400, f"{t.display} 只支持单个文件")
     if type == "mergePDF" and len(file_list) < 2:

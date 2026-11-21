@@ -29,6 +29,8 @@ brew install poppler qpdf ghostscript tesseract          # macOS
 brew install --cask libreoffice
 
 uvicorn app.main:app --port 8000
+# 或使用开发启动器（SIGUSR1 可转储协程任务栈，便于排查卡住的任务）
+python run.py --port 8000
 ```
 
 ## 功能对照（与桌面版）

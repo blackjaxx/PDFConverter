@@ -36,6 +36,9 @@ def make_fixtures():
     txt = TMP / "note.txt"
     txt.write_text("这是一份用于 LibreOffice 转换的测试文档。\nSmoke test document.", "utf-8")
     paths["txt"] = txt
+    html = TMP / "page.html"
+    html.write_text("<html><body><h1>Smoke Test</h1><p>HTML → PDF 测试页面</p></body></html>", "utf-8")
+    paths["html"] = html
     return paths
 
 
@@ -71,7 +74,7 @@ CASES = [
     ("wordToPDF", ["txt"], {}),
     ("compressPDF", ["pdf1"], {"compressionLevel": "ebook"}),
     ("ocrSearchablePDF", ["pdf1"], {"ocrLanguages": "eng"}),
-    ("htmlToPDF", ["pdf1"], {}),
+    ("htmlToPDF", ["html"], {}),
     ("pdfAISummary", ["pdf1"], {}),
 ]
 

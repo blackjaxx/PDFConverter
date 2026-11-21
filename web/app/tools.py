@@ -40,6 +40,26 @@ def _brew_hint(name: str) -> str:
             "tesseract": "tesseract", "soffice": "--cask libreoffice"}.get(name, name)
 
 
+# 各工具的安装指引（前端「工具箱」与错误提示使用）
+INSTALL_INFO: dict[str, dict[str, str]] = {
+    "pdftoppm": {"brew": "brew install poppler", "apt": "apt install poppler-utils",
+                 "url": "https://poppler.freedesktop.org/", "label": "Poppler"},
+    "pdftotext": {"brew": "brew install poppler", "apt": "apt install poppler-utils",
+                  "url": "https://poppler.freedesktop.org/", "label": "Poppler"},
+    "qpdf": {"brew": "brew install qpdf", "apt": "apt install qpdf",
+             "url": "https://qpdf.readthedocs.io/", "label": "qpdf"},
+    "gs": {"brew": "brew install ghostscript", "apt": "apt install ghostscript",
+           "url": "https://www.ghostscript.com/", "label": "Ghostscript"},
+    "tesseract": {"brew": "brew install tesseract tesseract-lang",
+                  "apt": "apt install tesseract-ocr tesseract-ocr-chi-sim",
+                  "url": "https://github.com/tesseract-ocr/tesseract", "label": "Tesseract OCR"},
+    "soffice": {"brew": "brew install --cask libreoffice", "apt": "apt install libreoffice",
+                "url": "https://www.libreoffice.org/download/", "label": "LibreOffice"},
+    "playwright": {"brew": "pip install playwright && playwright install chromium",
+                   "apt": "pip install playwright && playwright install chromium",
+                   "url": "https://playwright.dev/python/docs/intro", "label": "Playwright"},
+}
+
 # PATH 之外补充常见 Homebrew 路径（本地 macOS 开发时与桌面版行为一致）
 _EXTRA_DIRS = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin", "/bin"]
 _cache: dict[str, str | None] = {}

@@ -4,154 +4,250 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PDF Converter Web</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%233d7eff'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>P</text></svg>">
 <style>
   :root {
-    --bg: #f5f5f7; --panel: #ffffff; --border: #e3e3e6; --text: #1d1d1f;
-    --secondary: #6e6e73; --accent: #0a84ff; --green: #34c759; --red: #ff3b30;
-    --orange: #ff9500; --radius: 10px;
+    --bg: #f4f5f7; --panel: #ffffff; --sidebar: #fbfbfc; --border: #e6e8ec;
+    --text: #17181c; --secondary: #697077; --faint: #9aa0a8;
+    --accent: #3d7eff; --accent-deep: #2f66d9; --accent-soft: #ecf3ff;
+    --green: #22a05c; --green-soft: #e5f6ec; --red: #e5484d; --red-soft: #feecec;
+    --orange: #e58600; --orange-soft: #fff4dc;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.05), 0 2px 6px rgba(16,24,40,.06);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-         background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
-  .app { display: grid; grid-template-columns: 220px 1fr 340px; height: 100vh; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); font-size: 13.5px; line-height: 1.5; overflow: hidden; }
+  .app { display: grid; grid-template-columns: 236px minmax(0,1fr) 372px; height: 100vh; }
 
   /* ── 侧边栏 ── */
-  .sidebar { background: #ececee; border-right: 1px solid var(--border);
-             overflow-y: auto; padding: 14px 10px; }
-  .sidebar h1 { font-size: 15px; padding: 4px 8px 12px; color: var(--secondary); }
-  .cat { font-size: 11px; font-weight: 600; color: var(--secondary);
-         padding: 12px 8px 4px; text-transform: uppercase; }
-  .type-row { display: flex; align-items: center; justify-content: space-between;
-              padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
-  .type-row:hover { background: #dfdfe3; }
-  .type-row.active { background: var(--accent); color: #fff; }
-  .badge { font-size: 10px; padding: 1px 7px; border-radius: 99px; font-weight: 600; }
-  .badge.install { background: #ffe5e0; color: var(--red); }
-  .badge.key { background: #fff3d6; color: var(--orange); }
-  .type-row.active .badge { background: rgba(255,255,255,.25); color: #fff; }
+  .sidebar { background: var(--sidebar); border-right: 1px solid var(--border);
+             overflow-y: auto; padding: 16px 10px 20px; }
+  .logo { display: flex; align-items: center; gap: 10px; padding: 2px 8px 16px; }
+  .logo .mark { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+                background: linear-gradient(135deg, #3d7eff, #6366f1);
+                display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px; }
+  .logo .name { font-weight: 700; font-size: 14.5px; letter-spacing: .2px; }
+  .logo .sub { font-size: 10.5px; color: var(--faint); }
+  .cat { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+         color: var(--faint); padding: 14px 8px 5px; letter-spacing: .4px; }
+  .type-row { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+              padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13px;
+              color: var(--text); transition: background .12s; }
+  .type-row:hover { background: #eef0f3; }
+  .type-row.active { background: var(--accent); color: #fff; font-weight: 600; }
+  .type-row .t-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 10px; padding: 1px 7px; border-radius: 99px; font-weight: 600; flex-shrink: 0; }
+  .badge.install { background: var(--red-soft); color: var(--red); }
+  .badge.key { background: var(--orange-soft); color: var(--orange); }
+  .type-row.active .badge { background: rgba(255,255,255,.28); color: #fff; }
 
   /* ── 主面板 ── */
-  .main { overflow-y: auto; padding: 20px 24px; }
-  .main-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .main-header h2 { font-size: 20px; }
-  .engine { font-size: 12px; color: var(--secondary); margin-left: 10px; }
-  .btn { border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px;
-         cursor: pointer; background: var(--accent); color: #fff; }
-  .btn:disabled { opacity: .4; cursor: not-allowed; }
-  .btn.secondary { background: #e8e8ed; color: var(--text); }
-  .btn.small { padding: 4px 10px; font-size: 12px; }
-  .btn.danger { background: #ffe5e0; color: var(--red); }
-  .banner { background: #fff3d6; color: #8a6d00; border-radius: var(--radius);
-            padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
-  .banner.error { background: #ffe5e0; color: var(--red); }
+  .main { overflow-y: auto; padding: 22px 26px 30px; }
+  .main-header { display: flex; align-items: center; justify-content: space-between;
+                 gap: 12px; margin-bottom: 16px; }
+  .main-header h2 { font-size: 21px; letter-spacing: .2px; }
+  .engine { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+            color: var(--secondary); background: var(--panel); border: 1px solid var(--border);
+            padding: 2px 9px; border-radius: 99px; margin-left: 10px; vertical-align: 3px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 9px;
+         padding: 9px 18px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+         background: linear-gradient(135deg, var(--accent), var(--accent-deep)); color: #fff;
+         box-shadow: 0 1px 2px rgba(61,126,255,.35); transition: .15s; }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(61,126,255,.35); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+  .btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+                   box-shadow: var(--shadow); }
+  .btn.small { padding: 4px 11px; font-size: 12px; border-radius: 7px; }
+  .btn.danger { background: var(--red-soft); color: var(--red); box-shadow: none; }
 
-  .dropzone { border: 2px dashed #c7c7cc; border-radius: var(--radius); text-align: center;
-              padding: 34px 20px; color: var(--secondary); cursor: pointer; transition: .15s; }
-  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: rgba(10,132,255,.06); }
-  .dropzone .big { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-  .filelist { list-style: none; margin: 10px 0; }
-  .filelist li { display: flex; align-items: center; gap: 8px; background: var(--panel);
-                 border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px;
-                 font-size: 13px; margin-bottom: 6px; }
+  .banner { border-radius: var(--radius); padding: 12px 15px; font-size: 13px;
+            margin-bottom: 16px; line-height: 1.7; }
+  .banner.warn { background: var(--orange-soft); color: #8a5b00; }
+  .banner.error { background: var(--red-soft); color: var(--red); }
+  .banner b { font-weight: 700; }
+  .banner .cmd { font-family: var(--mono); font-size: 12px; background: rgba(255,255,255,.75);
+                 padding: 2px 8px; border-radius: 6px; margin: 0 2px; }
+  .banner .link, a.link { color: inherit; font-weight: 600; cursor: pointer; }
+
+  .dropzone { border: 1.5px dashed #c9cdd4; border-radius: var(--radius); text-align: center;
+              padding: 36px 20px; color: var(--secondary); cursor: pointer;
+              background: var(--panel); transition: .15s; }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft);
+                                    transform: scale(1.004); }
+  .dropzone .icon { font-size: 30px; margin-bottom: 8px; }
+  .dropzone .big { font-size: 14.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .dropzone .hint { font-size: 12px; }
+
+  .filelist { list-style: none; margin: 12px 0; }
+  .filelist li { display: flex; align-items: center; gap: 9px; background: var(--panel);
+                 border: 1px solid var(--border); border-radius: 9px; padding: 8px 13px;
+                 font-size: 13px; margin-bottom: 7px; box-shadow: var(--shadow); }
   .filelist .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .filelist button { border: none; background: none; color: var(--secondary); cursor: pointer; }
+  .filelist .size { color: var(--faint); font-size: 12px; }
+  .iconbtn { border: none; background: none; color: var(--faint); cursor: pointer;
+             font-size: 14px; padding: 2px 4px; border-radius: 6px; }
+  .iconbtn:hover { background: var(--red-soft); color: var(--red); }
 
-  .params { background: var(--panel); border: 1px solid var(--border);
-            border-radius: var(--radius); padding: 14px 16px; margin-top: 14px; }
-  .params h3 { font-size: 13px; margin-bottom: 10px; display: flex; justify-content: space-between; }
-  .prow { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
-  .prow label { width: 80px; font-size: 12px; color: var(--secondary); flex-shrink: 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+          box-shadow: var(--shadow); padding: 16px 18px; margin-top: 16px; }
+  .card h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px;
+             display: flex; align-items: center; justify-content: space-between; }
+  .prow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .prow:last-child { margin-bottom: 0; }
+  .prow label { width: 84px; font-size: 12.5px; color: var(--secondary); flex-shrink: 0; }
   .prow input[type=text], .prow input[type=password], .prow input[type=number], .prow select {
-      flex: 1; max-width: 320px; padding: 6px 10px; border: 1px solid var(--border);
-      border-radius: 7px; font-size: 13px; }
-  .prow .range { display: flex; align-items: center; gap: 6px; }
-  .prow .range input { width: 70px; }
-  .note { font-size: 12px; color: var(--secondary); margin-top: 14px; }
+      flex: 1; max-width: 330px; padding: 7px 11px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 13px; background: var(--panel); color: var(--text); }
+  .prow input:focus, .prow select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .prow .range { display: flex; align-items: center; gap: 7px; }
+  .prow .range input { width: 74px; }
+  .prow .range .sep { font-size: 12px; color: var(--faint); }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip { font-size: 12px; padding: 4px 12px; border-radius: 99px; border: 1px solid var(--border);
+          background: var(--panel); cursor: pointer; color: var(--secondary); transition: .12s; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-deep); font-weight: 600; }
+  .note { font-size: 12px; color: var(--faint); margin-top: 16px; }
 
   /* ── 任务队列 ── */
-  .queue { background: var(--panel); border-left: 1px solid var(--border);
-           display: flex; flex-direction: column; }
-  .queue header { display: flex; align-items: center; gap: 8px; padding: 12px 14px;
-                  border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 600; }
+  .queue { background: var(--bg); border-left: 1px solid var(--border);
+           display: flex; flex-direction: column; min-height: 0; }
+  .queue > header { display: flex; align-items: center; gap: 8px; padding: 14px 16px;
+                    background: var(--panel); border-bottom: 1px solid var(--border); }
+  .queue > header .title { font-size: 14px; font-weight: 700; }
+  .count { font-size: 11px; background: #eceef1; color: var(--secondary);
+           padding: 1px 8px; border-radius: 99px; font-weight: 600; }
   .queue header .spacer { flex: 1; }
-  #jobList { flex: 1; overflow-y: auto; padding: 10px 12px; }
-  .job { border: 1px solid var(--border); border-radius: var(--radius);
-         padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+  #jobList { flex: 1; overflow-y: auto; padding: 12px; }
+  .job { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+         padding: 12px 14px; margin-bottom: 10px; font-size: 13px; box-shadow: var(--shadow); }
   .job .row1 { display: flex; align-items: center; gap: 8px; }
   .job .row1 .title { flex: 1; font-weight: 600; overflow: hidden;
                       text-overflow: ellipsis; white-space: nowrap; }
-  .status { font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 600; flex-shrink: 0; }
-  .status.pending { background: #ececee; color: var(--secondary); }
-  .status.running { background: #e0edff; color: var(--accent); }
-  .status.completed { background: #dcf5e4; color: var(--green); }
-  .status.failed { background: #ffe5e0; color: var(--red); }
-  .status.cancelled { background: #fff3d6; color: var(--orange); }
-  .progress { height: 5px; background: #ececee; border-radius: 99px; margin: 8px 0 4px; overflow: hidden; }
-  .progress > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
-  .job .error { color: var(--red); font-size: 12px; margin-top: 6px; cursor: pointer; }
-  .job .details { background: #f6f6f8; border-radius: 7px; padding: 8px; margin-top: 6px;
-                  font-family: ui-monospace, monospace; font-size: 11px;
+  .job .meta { font-size: 11px; color: var(--faint); margin-top: 2px; }
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+            padding: 2px 9px; border-radius: 99px; font-weight: 600; flex-shrink: 0; }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status.pending { background: #eceef1; color: var(--secondary); }
+  .status.running { background: var(--accent-soft); color: var(--accent-deep); }
+  .status.completed { background: var(--green-soft); color: var(--green); }
+  .status.failed { background: var(--red-soft); color: var(--red); }
+  .status.cancelled { background: var(--orange-soft); color: var(--orange); }
+  .progress { height: 6px; background: #eceef1; border-radius: 99px; margin: 9px 0 2px; overflow: hidden; }
+  .progress > div { height: 100%; border-radius: 99px; transition: width .4s;
+                    background: linear-gradient(90deg, var(--accent), #6366f1);
+                    background-size: 200% 100%; animation: flow 1.2s linear infinite; }
+  @keyframes flow { from { background-position: 0 0; } to { background-position: -200% 0; } }
+  .job .error { color: var(--red); font-size: 12.5px; margin-top: 8px; line-height: 1.6; }
+  .job .error .err-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .job .details { background: #f6f7f9; border-radius: 8px; padding: 9px 11px; margin-top: 7px;
+                  font-family: var(--mono); font-size: 11px;
                   white-space: pre-wrap; word-break: break-all; color: var(--secondary); }
-  .job .actions { display: flex; gap: 8px; margin-top: 8px; }
-  .job .outputs { margin-top: 8px; }
-  .job .outputs a { display: flex; align-items: center; gap: 6px; font-size: 12px;
-                    color: var(--accent); text-decoration: none; padding: 4px 0; }
+  .job .actions { display: flex; gap: 8px; margin-top: 9px; }
+  .job .outputs { margin-top: 9px; border-top: 1px dashed var(--border); padding-top: 7px; }
+  .job .outputs a { display: flex; align-items: center; gap: 6px; font-size: 12.5px;
+                    color: var(--accent-deep); text-decoration: none; padding: 4px 0; }
   .job .outputs a:hover { text-decoration: underline; }
-  .empty { text-align: center; color: var(--secondary); padding: 40px 10px; font-size: 13px; }
-  #toolsReport { border-top: 1px solid var(--border); padding: 10px 14px; font-size: 12px;
-                 color: var(--secondary); }
-  #toolsReport .tool { display: inline-flex; align-items: center; gap: 4px; margin: 2px 8px 2px 0; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .dot.ok { background: var(--green); } .dot.miss { background: var(--red); }
-  a.link { color: var(--accent); text-decoration: none; cursor: pointer; font-size: 12px; }
+  .job .outputs .size { color: var(--faint); }
+  .empty { text-align: center; color: var(--faint); padding: 46px 14px; font-size: 13px; }
+  .empty .icon { font-size: 34px; margin-bottom: 10px; opacity: .5; }
 
-  dialog { border: none; border-radius: var(--radius); padding: 22px; width: 380px; }
-  dialog::backdrop { background: rgba(0,0,0,.3); }
-  dialog h3 { margin-bottom: 12px; font-size: 15px; }
-  dialog p { font-size: 12px; color: var(--secondary); margin-bottom: 10px; line-height: 1.6; }
-  dialog input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-                 border-radius: 7px; margin-bottom: 12px; font-size: 13px; }
+  /* ── 工具箱 ── */
+  .toolbox { border-top: 1px solid var(--border); background: var(--panel); }
+  .toolbox summary { display: flex; align-items: center; gap: 8px; padding: 11px 16px;
+                     font-size: 12.5px; font-weight: 600; cursor: pointer; list-style: none; }
+  .toolbox summary::-webkit-details-marker { display: none; }
+  .toolbox summary .spacer { flex: 1; }
+  .toolbox .body { padding: 4px 16px 14px; font-size: 12px; }
+  .tool-row { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+              border-bottom: 1px dashed var(--border); }
+  .tool-row:last-child { border-bottom: none; }
+  .tool-row .name { width: 90px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+  .tool-row .cmds { flex: 1; display: flex; flex-wrap: wrap; gap: 5px; }
+  .cmd-pill { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono);
+              font-size: 11px; background: #f1f3f6; border: 1px solid var(--border);
+              border-radius: 6px; padding: 2px 4px 2px 8px; color: var(--secondary); cursor: pointer; }
+  .cmd-pill:hover { border-color: var(--accent); color: var(--accent-deep); }
+  .cmd-pill .cp { opacity: .6; }
+  .tool-row a { color: var(--accent-deep); text-decoration: none; flex-shrink: 0; }
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(8px);
+           background: #23252b; color: #fff; padding: 9px 18px; border-radius: 9px;
+           font-size: 13px; opacity: 0; transition: .2s; z-index: 99; pointer-events: none;
+           box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  dialog { border: none; border-radius: var(--radius); padding: 24px; width: 400px;
+           box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+  dialog::backdrop { background: rgba(15,18,25,.4); }
+  dialog h3 { margin-bottom: 10px; font-size: 15px; }
+  dialog p { font-size: 12.5px; color: var(--secondary); margin-bottom: 12px; line-height: 1.7; }
+  dialog input { width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+                 border-radius: 8px; margin-bottom: 14px; font-size: 13px; }
   dialog .btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+  @media (max-width: 1180px) {
+    .app { grid-template-columns: 210px minmax(0,1fr); grid-template-rows: 1fr auto; }
+    .queue { grid-column: 1 / -1; max-height: 40vh; border-left: none; border-top: 1px solid var(--border); }
+  }
 </style>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
-    <h1>PDF Converter</h1>
+    <div class="logo">
+      <div class="mark">P</div>
+      <div>
+        <div class="name">PDF Converter</div>
+        <div class="sub">Web Edition</div>
+      </div>
+    </div>
     <div id="typeList"></div>
   </aside>
 
   <main class="main">
     <div class="main-header">
-      <div><h2 id="typeTitle" style="display:inline"></h2><span class="engine" id="engineLabel"></span></div>
-      <button class="btn" id="startBtn">开始转换</button>
+      <div>
+        <h2 id="typeTitle" style="display:inline"></h2>
+        <span class="engine" id="engineLabel"></span>
+      </div>
+      <button class="btn" id="startBtn">⚡ 开始转换</button>
     </div>
-    <div id="banner"></div>
+    <div id="guidance"></div>
     <div class="dropzone" id="dropzone">
+      <div class="icon">📥</div>
       <div class="big">拖拽文件到此处</div>
-      <div>或点击选择文件</div>
-      <input type="file" id="fileInput" multiple hidden>
+      <div class="hint" id="dropHint">或点击选择文件</div>
     </div>
+    <input type="file" id="fileInput" multiple hidden>
     <ul class="filelist" id="fileList"></ul>
-    <div class="params" id="paramsPanel"></div>
-    <p class="note">转换完成后在右侧任务队列中点击文件名下载。文件与输出在服务器保留，直到你移除对应任务。</p>
+    <div class="card" id="paramsPanel"></div>
+    <p class="note">转换完成后在右侧任务队列中点击文件名下载。任务与输出文件保存在服务器，移除任务时一并删除。</p>
   </main>
 
   <aside class="queue">
     <header>
-      任务队列 <span id="jobCount"></span>
+      <span class="title">任务队列</span><span class="count" id="jobCount">0</span>
       <span class="spacer"></span>
       <button class="btn small secondary" id="clearDone">清空已完成</button>
       <button class="btn small danger" id="clearAll">清空全部</button>
     </header>
-    <div id="jobList"><div class="empty">暂无任务<br>添加文件并点击「开始转换」</div></div>
-    <footer id="toolsReport"></footer>
+    <div id="jobList"><div class="empty"><div class="icon">🗂️</div>暂无任务<br>添加文件并点击「开始转换」</div></div>
+    <details class="toolbox" id="toolbox">
+      <summary>
+        🧰 环境与工具 <span class="count" id="toolCount"></span>
+        <span class="spacer"></span>
+        <a class="link" id="toolRefresh" title="重新扫描">刷新</a>
+      </summary>
+      <div class="body" id="toolboxBody"></div>
+    </details>
   </aside>
 </div>
 
 <dialog id="keyDialog">
   <h3>DeepSeek API Key</h3>
-  <p>AI 摘要 / 翻译 / 转 Markdown 需要 DeepSeek Key（<a href="https://platform.deepseek.com/api_keys" target="_blank">获取</a>）。
+  <p>AI 摘要 / 翻译 / 转 Markdown 需要 DeepSeek Key（<a class="link" href="https://platform.deepseek.com/api_keys" target="_blank">获取</a>）。
      Key 仅保存在你浏览器的 localStorage，并只在你提交 AI 任务时随请求发送给本服务。</p>
   <input type="password" id="keyInput" placeholder="sk-...">
   <div class="btns">
@@ -160,12 +256,25 @@
   </div>
 </dialog>
 
+<div class="toast" id="toast"></div>
+
 <script>
 const API = '';
-let TYPES = [], CATEGORIES = [], TOOL_STATUS = {}, HAS_SERVER_KEY = false;
-let selectedType = null, files = [];
+let TYPES = [], CATEGORIES = [], TOOL_STATUS = {}, INSTALL = {}, HAS_SERVER_KEY = false;
+let selectedType = null, files = [], jobs = [];
 
 const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast('已复制：' + text); }
+  catch { toast('复制失败，请手动选择文本'); }
+}
 
 async function init() {
   const [tRes, toolsRes] = await Promise.all([
@@ -173,28 +282,46 @@ async function init() {
     fetch(API + '/api/tools').then(r => r.json())
   ]);
   TYPES = tRes.types; CATEGORIES = tRes.categories;
-  TOOL_STATUS = toolsRes.tools; HAS_SERVER_KEY = toolsRes.hasServerKey;
-  renderTypes(); renderTools();
+  TOOL_STATUS = toolsRes.tools; INSTALL = toolsRes.install || {};
+  HAS_SERVER_KEY = toolsRes.hasServerKey;
+  renderTypes(); renderToolbox();
   selectType(TYPES[0].key);
   connectSSE();
 }
 
 function typeByKey(key) { return TYPES.find(t => t.key === key); }
+function toolLabel(name) { return (INSTALL[name] && INSTALL[name].label) || name; }
+
+function isAvailable(t) {
+  if (t.tool && !TOOL_STATUS[t.tool]) return false;
+  if (t.tool2 && !TOOL_STATUS[t.tool2]) return false;
+  if (t.key === 'htmlToPDF' && !TOOL_STATUS.playwright) return false;
+  return true;
+}
+function missingTool(t) {
+  if (t.tool && !TOOL_STATUS[t.tool]) return t.tool;
+  if (t.tool2 && !TOOL_STATUS[t.tool2]) return t.tool2;
+  if (t.key === 'htmlToPDF' && !TOOL_STATUS.playwright) return 'playwright';
+  return null;
+}
+
+/* ── 侧边栏 ── */
+const CAT_ICONS = { pdfToImage: '🖼️', imageToPDF: '🖼️', pdfToText: '📄', officeToPDF: '📊',
+  pdfToOffice: '📝', htmlToPDF: '🌐', compress: '🗜️', merge: '📑', split: '📑', rotate: '🔄',
+  watermark: '💧', encrypt: '🔒', decrypt: '🔓', ocr: '🔍', ai: '🤖' };
 
 function renderTypes() {
-  const box = $('typeList');
-  box.innerHTML = '';
+  const box = $('typeList'); box.innerHTML = '';
   for (const cat of CATEGORIES) {
     const items = TYPES.filter(t => t.category === cat.key);
     if (!items.length) continue;
     const h = document.createElement('div');
-    h.className = 'cat'; h.textContent = cat.display;
+    h.className = 'cat'; h.textContent = (CAT_ICONS[cat.key] || '') + ' ' + cat.display;
     box.appendChild(h);
     for (const t of items) {
       const row = document.createElement('div');
       row.className = 'type-row' + (selectedType === t.key ? ' active' : '');
-      const name = document.createElement('span'); name.textContent = t.display;
-      row.appendChild(name);
+      row.innerHTML = `<span class="t-name">${esc(t.display)}</span>`;
       if (!t.available) { const b = document.createElement('span'); b.className = 'badge install'; b.textContent = '需安装'; row.appendChild(b); }
       else if (t.needsKey && !HAS_SERVER_KEY && !localStorage.getItem('deepseek_key')) {
         const b = document.createElement('span'); b.className = 'badge key'; b.textContent = '需 Key'; row.appendChild(b);
@@ -205,69 +332,115 @@ function renderTypes() {
   }
 }
 
+/* ── 主面板 ── */
+function guidanceHTML(toolName) {
+  const info = INSTALL[toolName] || {};
+  const parts = [];
+  if (info.brew) parts.push(`<span class="cmd">${esc(info.brew)}</span> <a class="link" onclick="copyText('${esc(info.brew)}')">复制</a>`);
+  if (info.apt && info.apt !== info.brew) parts.push(`<span class="cmd">${esc(info.apt)}</span> <a class="link" onclick="copyText('${esc(info.apt)}')">复制</a>`);
+  if (info.url) parts.push(`<a class="link" href="${esc(info.url)}" target="_blank">官网 ↗</a>`);
+  return parts.join('&nbsp;&nbsp;');
+}
+
+function renderGuidance() {
+  const t = typeByKey(selectedType);
+  const box = $('guidance'); box.innerHTML = '';
+  const tool = missingTool(t);
+  if (tool) {
+    box.innerHTML = `<div class="banner error">此功能需要 <b>${esc(toolLabel(tool))}</b>（${esc(tool)}），服务器未安装。安装并重启服务后自动点亮：<br>${guidanceHTML(tool)}</div>`;
+    return;
+  }
+  const missing = Object.entries(TOOL_STATUS).filter(([k, v]) => !v).map(([k]) => k);
+  if (missing.length) {
+    box.innerHTML = `<div class="banner warn">部分工具未安装（${missing.map(toolLabel).join('、')}），相关功能不可用。展开右下角 <b>🧰 环境与工具</b> 可复制安装命令。</div>`;
+  }
+  if (t.needsKey && !HAS_SERVER_KEY && !localStorage.getItem('deepseek_key')) {
+    box.innerHTML += `<div class="banner warn">使用此功能需要 DeepSeek API Key，<a class="link" onclick="$('keyDialog').showModal()">点此配置</a>（仅存于浏览器本地）。</div>`;
+  }
+}
+
 function selectType(key) {
   selectedType = key;
   const t = typeByKey(key);
   $('typeTitle').textContent = t.display;
-  $('engineLabel').textContent = '引擎: ' + t.engineDisplay;
+  $('engineLabel').textContent = '⚙ ' + t.engineDisplay;
   if (!t.multiple) files = files.slice(0, 1);
   $('fileInput').multiple = t.multiple;
-  renderTypes(); renderFiles(); renderParams(); updateStart();
+  $('fileInput').accept = (t.accept || []).join(',') || '';
+  $('dropHint').textContent = t.accept.length
+    ? `或点击选择文件（${t.accept.join(' / ')}${t.multiple ? '，可多选' : ''}）`
+    : '或点击选择文件';
+  renderTypes(); renderFiles(); renderParams(); renderGuidance(); updateStart();
 }
 
 function renderParams() {
   const t = typeByKey(selectedType);
   const panel = $('paramsPanel');
   panel.innerHTML = '<h3><span>参数</span><a class="link" onclick="resetParams()">重置</a></h3>';
-  if (!t.params.length) {
-    const p = document.createElement('p');
-    p.className = 'note'; p.style.margin = '0';
-    p.textContent = '此类型无需额外参数';
-    panel.appendChild(p);
+  const defs = t.params.filter(d => !d.onlyFor || d.onlyFor === selectedType);
+  if (!defs.length) {
+    panel.insertAdjacentHTML('beforeend', '<p class="note" style="margin:0">此类型无需额外参数</p>');
     return;
   }
-  for (const def of t.params) {
-    if (def.onlyFor && def.onlyFor !== selectedType) continue;
+  for (const def of defs) {
     const row = document.createElement('div'); row.className = 'prow';
-    const label = document.createElement('label'); label.textContent = def.label;
-    row.appendChild(label);
-    const saved = getParam(def.key);
+    row.innerHTML = `<label>${esc(def.label)}</label>`;
+    const saved = paramState[def.key];
     if (def.type === 'stepper') {
       const input = document.createElement('input');
       input.type = 'number'; input.min = def.min; input.max = def.max; input.step = def.step;
-      input.value = saved ?? def.default; input.dataset.param = def.key;
+      input.value = saved ?? def.default;
       input.oninput = () => setParam(def.key, Number(input.value));
       row.appendChild(input);
+      if (def.unit) row.insertAdjacentHTML('beforeend', `<span class="sep">${def.unit}</span>`);
     } else if (def.type === 'select') {
       const sel = document.createElement('select');
-      sel.dataset.param = def.key;
       for (const [v, label] of def.options) {
-        const opt = document.createElement('option'); opt.value = v; opt.textContent = label;
-        sel.appendChild(opt);
+        sel.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(label)}</option>`);
       }
       sel.value = saved ?? def.default;
       sel.onchange = () => setParam(def.key, isNaN(Number(sel.value)) ? sel.value : Number(sel.value));
       row.appendChild(sel);
     } else if (def.type === 'range') {
-      const wrap = document.createElement('div'); wrap.className = 'range';
       const cur = saved || {};
-      wrap.innerHTML = `<span style="font-size:12px;color:var(--secondary)">第</span>
+      row.insertAdjacentHTML('beforeend', `<div class="range">
+        <span class="sep">第</span>
         <input type="number" min="1" placeholder="1" id="rangeStart" value="${cur.start ?? ''}">
-        <span style="font-size:12px;color:var(--secondary)">页 至</span>
-        <input type="number" min="1" placeholder="末页" id="rangeEnd" value="${cur.end ?? ''}">`;
+        <span class="sep">页 —</span>
+        <input type="number" min="1" placeholder="末页" id="rangeEnd" value="${cur.end ?? ''}">
+      </div>`);
+    } else if (def.type === 'chips') {
+      const wrap = document.createElement('div'); wrap.style.flex = '1';
+      const input = document.createElement('input');
+      input.type = 'text'; input.placeholder = def.placeholder || '';
+      input.value = saved ?? def.default ?? '';
+      input.dataset.param = def.key;
+      input.oninput = () => { setParam(def.key, input.value); syncChips(); };
+      wrap.appendChild(input);
+      const chips = document.createElement('div'); chips.className = 'chips';
+      chips.style.marginTop = '7px';
+      for (const [v, label] of def.options) {
+        chips.insertAdjacentHTML('beforeend', `<button class="chip" data-v="${esc(v)}">${esc(label)}</button>`);
+      }
+      const syncChips = () => {
+        chips.querySelectorAll('.chip').forEach(ch =>
+          ch.classList.toggle('on', ch.dataset.v === input.value.trim()));
+      };
+      chips.querySelectorAll('.chip').forEach(ch =>
+        ch.onclick = () => { input.value = ch.dataset.v; setParam(def.key, ch.dataset.v); syncChips(); });
+      syncChips();
+      wrap.appendChild(chips);
       row.appendChild(wrap);
     } else {
       const input = document.createElement('input');
       input.type = def.type === 'password' ? 'password' : 'text';
       input.placeholder = def.placeholder || '';
       input.value = saved ?? def.default ?? '';
-      input.dataset.param = def.key;
       input.oninput = () => setParam(def.key, input.value);
       row.appendChild(input);
     }
     panel.appendChild(row);
   }
-  // range 字段即时收集
   const rs = $('rangeStart'), re = $('rangeEnd');
   if (rs) {
     const collect = () => {
@@ -279,9 +452,8 @@ function renderParams() {
 }
 
 let paramState = {};
-function getParam(key) { return paramState[key]; }
 function setParam(key, value) { paramState[key] = value; }
-function resetParams() { paramState = {}; renderParams(); }
+function resetParams() { paramState = {}; renderParams(); toast('参数已重置'); }
 
 function collectParams() {
   const out = {};
@@ -297,31 +469,41 @@ function collectParams() {
 /* ── 文件选择 ── */
 const dropzone = $('dropzone');
 dropzone.onclick = () => $('fileInput').click();
-$('fileInput').onchange = e => addFiles(e.target.files);
+$('fileInput').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
 dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('drag'); };
 dropzone.ondragleave = () => dropzone.classList.remove('drag');
 dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('drag'); addFiles(e.dataTransfer.files); };
 
 function addFiles(list) {
   const t = typeByKey(selectedType);
+  const accept = (t.accept || []).map(x => x.toLowerCase());
   const incoming = [...list];
-  if (!t.multiple) files = incoming.slice(0, 1);
-  else { files = files.concat(incoming.filter(f => !files.some(x => x.name === f.name && x.size === f.size))); }
+  const rejected = [];
+  const kept = [];
+  for (const f of incoming) {
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+    if (accept.length && !accept.includes(ext)) { rejected.push(f.name); continue; }
+    kept.push(f);
+  }
+  if (rejected.length) toast('已跳过不支持的文件：' + rejected.join('、'));
+  if (!t.multiple) files = kept.slice(0, 1);
+  else files = files.concat(kept.filter(f => !files.some(x => x.name === f.name && x.size === f.size)));
   renderFiles(); updateStart();
 }
 function renderFiles() {
   const ul = $('fileList'); ul.innerHTML = '';
   for (const f of files) {
     const li = document.createElement('li');
-    li.innerHTML = `<span>📄</span><span class="name" title="${f.name}">${f.name}（${(f.size/1048576).toFixed(1)} MB）</span>`;
-    const btn = document.createElement('button'); btn.textContent = '✕'; btn.title = '移除';
-    btn.onclick = () => { files = files.filter(x => x !== f); renderFiles(); updateStart(); };
+    li.innerHTML = `<span>📄</span><span class="name" title="${esc(f.name)}">${esc(f.name)}</span>
+                    <span class="size">${(f.size / 1048576).toFixed(1)} MB</span>`;
+    const btn = document.createElement('button'); btn.className = 'iconbtn'; btn.textContent = '✕';
+    btn.title = '移除'; btn.onclick = () => { files = files.filter(x => x !== f); renderFiles(); updateStart(); };
     li.appendChild(btn); ul.appendChild(li);
   }
 }
 function updateStart() {
   const t = typeByKey(selectedType);
-  let ok = files.length > 0;
+  let ok = files.length > 0 && t.available;
   if (selectedType === 'mergePDF') ok = ok && files.length >= 2;
   $('startBtn').disabled = !ok;
 }
@@ -330,6 +512,9 @@ function updateStart() {
 $('startBtn').onclick = async () => {
   const t = typeByKey(selectedType);
   const params = collectParams();
+  if (selectedType === 'mergePDF' && files.length < 2) { toast('合并 PDF 至少需要 2 个文件'); return; }
+  const rng = params.pageRange;
+  if (rng && rng.end && rng.start > rng.end) { toast('页码范围无效：起始页大于结束页'); return; }
   if (t.needsKey && !HAS_SERVER_KEY) {
     const key = localStorage.getItem('deepseek_key');
     if (!key) { $('keyDialog').showModal(); return; }
@@ -342,14 +527,14 @@ $('startBtn').onclick = async () => {
   const resp = await fetch(API + '/api/jobs', { method: 'POST', body: fd });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-    alert('提交失败: ' + (err.detail || '未知错误'));
+    toast('提交失败: ' + (err.detail || '未知错误'));
     return;
   }
   files = []; renderFiles(); updateStart();
+  toast('已加入任务队列');
 };
 
 /* ── SSE 实时任务流 ── */
-let jobs = [];
 function connectSSE() {
   const es = new EventSource(API + '/api/events');
   es.onmessage = e => { jobs = JSON.parse(e.data); renderQueue(); };
@@ -358,103 +543,146 @@ function connectSSE() {
 
 const STATUS_LABEL = { pending: '等待', running: '进行中', completed: '完成', failed: '失败', cancelled: '已取消' };
 
+function relTime(ts) {
+  const d = Date.now() / 1000 - ts;
+  if (d < 60) return '刚刚';
+  if (d < 3600) return Math.floor(d / 60) + ' 分钟前';
+  if (d < 86400) return Math.floor(d / 3600) + ' 小时前';
+  return Math.floor(d / 86400) + ' 天前';
+}
+
 function renderQueue() {
   const box = $('jobList');
-  $('jobCount').textContent = jobs.length ? `(${jobs.length})` : '';
+  $('jobCount').textContent = jobs.length;
   if (!jobs.length) {
-    box.innerHTML = '<div class="empty">暂无任务<br>添加文件并点击「开始转换」</div>';
+    box.innerHTML = '<div class="empty"><div class="icon">🗂️</div>暂无任务<br>添加文件并点击「开始转换」</div>';
     return;
   }
   box.innerHTML = '';
   for (const j of jobs) {
     const el = document.createElement('div'); el.className = 'job';
     const row1 = document.createElement('div'); row1.className = 'row1';
-    row1.innerHTML = `<span class="title">${j.display}</span>
+    row1.innerHTML = `<span class="title">${esc(j.display)}</span>
       <span class="status ${j.status}">${STATUS_LABEL[j.status] || j.status}</span>`;
     if (['completed', 'failed', 'cancelled'].includes(j.status)) {
-      const x = document.createElement('button');
-      x.className = 'filelist'; x.style.cssText = 'border:none;background:none;cursor:pointer;color:var(--secondary)';
-      x.textContent = '✕'; x.title = '移除任务'; x.onclick = () => api('DELETE', `/api/jobs/${j.id}`);
+      const x = document.createElement('button'); x.className = 'iconbtn'; x.textContent = '✕';
+      x.title = '移除任务'; x.onclick = () => api('DELETE', `/api/jobs/${j.id}`);
       row1.appendChild(x);
     }
     el.appendChild(row1);
+    el.insertAdjacentHTML('beforeend',
+      `<div class="meta">${esc(j.inputNames.join('、'))} · ${relTime(j.createdAt)}</div>`);
 
     if (j.status === 'running' || j.status === 'completed') {
-      const p = document.createElement('div'); p.className = 'progress';
-      p.innerHTML = `<div style="width:${Math.round(j.progress * 100)}%"></div>`;
-      el.appendChild(p);
+      el.insertAdjacentHTML('beforeend',
+        `<div class="progress"><div style="width:${Math.round(j.progress * 100)}%"></div></div>`);
     }
     if (j.status === 'failed' && j.error) {
       const err = document.createElement('div'); err.className = 'error';
-      err.textContent = '⚠ ' + j.error;
-      err.onclick = () => {
+      err.innerHTML = '⚠ ' + esc(j.error);
+      const m = j.error.match(/未找到工具:\s*(\S+?)。/);
+      if (m) {
+        const name = m[1];
+        const act = document.createElement('div'); act.className = 'err-tools';
+        act.innerHTML = guidanceHTML(name);
+        err.appendChild(act);
+      }
+      err.onclick = e => {
+        if (e.target.closest('a') || e.target.closest('.cmd-pill')) return;
         const d = el.querySelector('.details');
         if (d) d.remove();
-        else {
-          const det = document.createElement('div'); det.className = 'details';
-          det.textContent = j.details || '（无详细信息）';
-          el.appendChild(det);
-        }
+        else el.insertAdjacentHTML('beforeend',
+          `<div class="details">${esc(j.details || '（无详细信息）')}</div>`);
       };
       el.appendChild(err);
     }
     if (j.outputs?.length) {
       const outs = document.createElement('div'); outs.className = 'outputs';
       for (const o of j.outputs) {
-        const a = document.createElement('a');
-        a.href = `${API}/api/jobs/${j.id}/files/${encodeURIComponent(o.name)}`;
-        a.download = o.name;
-        a.innerHTML = `⬇ ${o.name}（${(o.size/1048576).toFixed(2)} MB）`;
-        outs.appendChild(a);
+        outs.insertAdjacentHTML('beforeend',
+          `<a href="${API}/api/jobs/${j.id}/files/${encodeURIComponent(o.name)}" download="${esc(o.name)}">
+             ⬇ <span>${esc(o.name)}</span>&nbsp;<span class="size">${(o.size / 1048576).toFixed(2)} MB</span></a>`);
       }
       el.appendChild(outs);
     }
     if (j.status === 'failed' || j.status === 'cancelled') {
       const act = document.createElement('div'); act.className = 'actions';
       const retry = document.createElement('button'); retry.className = 'btn small secondary';
-      retry.textContent = '重试'; retry.onclick = () => api('POST', `/api/jobs/${j.id}/retry`);
+      retry.textContent = '↻ 重试'; retry.onclick = () => api('POST', `/api/jobs/${j.id}/retry`);
       act.appendChild(retry); el.appendChild(act);
     }
     box.appendChild(el);
   }
 }
 
-async function api(method, path, body) {
-  await fetch(API + path, { method, ...body });
+async function api(method, path) {
+  await fetch(API + path, { method });
   jobs = await fetch(API + '/api/jobs').then(r => r.json());
   renderQueue();
 }
 $('clearDone').onclick = () => api('POST', '/api/jobs/clear-completed');
 $('clearAll').onclick = () => api('POST', '/api/jobs/clear-all');
 
-/* ── 工具状态 ── */
-function renderTools() {
-  const box = $('toolsReport');
-  const labels = { pdftoppm: 'pdftoppm', pdftotext: 'pdftotext', qpdf: 'qpdf', gs: 'Ghostscript',
-                   soffice: 'LibreOffice', tesseract: 'Tesseract', playwright: 'Chromium' };
-  let html = '';
-  for (const [k, v] of Object.entries(TOOL_STATUS)) {
-    if (!(k in labels)) continue;
-    html += `<span class="tool"><span class="dot ${v ? 'ok' : 'miss'}"></span>${labels[k]}</span>`;
+/* ── 工具箱 ── */
+function renderToolbox() {
+  const entries = Object.entries(TOOL_STATUS).filter(([k]) => INSTALL[k]);
+  const okCount = entries.filter(([, v]) => v).length;
+  $('toolCount').textContent = `${okCount}/${entries.length} 可用`;
+  const body = $('toolboxBody'); body.innerHTML = '';
+  for (const [name, ok] of entries) {
+    const info = INSTALL[name];
+    const row = document.createElement('div'); row.className = 'tool-row';
+    row.innerHTML = `<span class="name"><span class="dot ${ok ? 'ok' : 'miss'}"></span>${esc(info.label)}</span>`;
+    const cmds = document.createElement('div'); cmds.className = 'cmds';
+    if (!ok) {
+      for (const key of ['brew', 'apt']) {
+        if (info[key]) {
+          const pill = document.createElement('span'); pill.className = 'cmd-pill';
+          pill.title = '点击复制';
+          pill.innerHTML = `<span>${esc(key)}:</span> <span>${esc(info[key])}</span><span class="cp">⧉</span>`;
+          pill.onclick = () => copyText(info[key]);
+          cmds.appendChild(pill);
+        }
+      }
+      row.appendChild(cmds);
+      row.insertAdjacentHTML('beforeend', `<a href="${esc(info.url)}" target="_blank" title="官方网站">↗</a>`);
+    } else {
+      row.insertAdjacentHTML('beforeend', '<span class="sep" style="color:var(--green)">已安装</span>');
+    }
+    body.appendChild(row);
   }
-  html += `<div style="margin-top:4px">DeepSeek Key: ${HAS_SERVER_KEY ? '服务器已配置' :
-    `<a class="link" onclick="$('keyDialog').showModal()">浏览器本地设置</a>`}</div>`;
-  if (Object.values(TOOL_STATUS).some(v => !v)) {
-    html += `<div style="margin-top:6px;color:var(--orange)">部分工具未安装，相关功能不可用（Docker 部署已内置全部工具）。</div>`;
+  const missing = entries.filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length) {
+    body.insertAdjacentHTML('beforeend',
+      `<p class="note" style="margin:8px 0 0">安装后重启服务即可自动识别（本地开发：重启 uvicorn；Docker：重新 build）。</p>`);
   }
-  box.innerHTML = html;
 }
+$('toolRefresh').onclick = async e => {
+  e.preventDefault();
+  const toolsRes = await fetch(API + '/api/tools?r=' + Date.now()).then(r => r.json());
+  TOOL_STATUS = toolsRes.tools; INSTALL = toolsRes.install || {}; HAS_SERVER_KEY = toolsRes.hasServerKey;
+  renderToolbox(); renderTypes(); renderGuidance(); updateStart();
+  toast('已重新扫描环境');
+};
 
+/* ── Key 设置 ── */
 $('keySave').onclick = () => {
   const v = $('keyInput').value.trim();
   if (v) localStorage.setItem('deepseek_key', v);
-  $('keyDialog').close(); renderTypes();
+  $('keyDialog').close(); renderTypes(); renderGuidance();
 };
-$('keyClear').onclick = () => { localStorage.removeItem('deepseek_key'); $('keyDialog').close(); renderTypes(); };
+$('keyClear').onclick = () => { localStorage.removeItem('deepseek_key'); $('keyDialog').close(); renderTypes(); renderGuidance(); };
 
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('startBtn').click();
 });
+
+/* 工具状态点（复用样式） */
+const style = document.createElement('style');
+style.textContent = '.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; } ' +
+  '.dot.ok { background: var(--green); } .dot.miss { background: var(--red); } ' +
+  '.sep { font-size: 12px; color: var(--faint); } .link { color: var(--accent-deep); }';
+document.head.appendChild(style);
 
 init();
 </script>

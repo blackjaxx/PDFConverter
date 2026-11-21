@@ -90,8 +90,8 @@ async def _poppler_pdf_to_images(ctx: JobContext) -> list[Path]:
         if rng[1]:
             args += ["-l", str(rng[1])]
     if ctx.type == "pdfToJPEG":
-        # 桌面版 v0.5.1：jpegQuality 通过 -jpegopt 生效
-        quality = max(0, min(100, int(float(ctx.param("jpegQuality", 0.85)) * 100)))
+        # 桌面版 v0.5.1：jpegQuality 通过 -jpegopt 生效（0-100）
+        quality = max(0, min(100, int(ctx.param("jpegQuality", 85))))
         args += ["-jpegopt", f"quality={quality}"]
     args += [f"-{fmt}", "-r", dpi, str(input), str(prefix)]
 
