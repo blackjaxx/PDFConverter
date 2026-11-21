@@ -1,6 +1,10 @@
-# PDF Converter (macOS)
+# PDF Converter
 
-原生 macOS SwiftUI PDF 转换器，支持 **PDF ⇄ 图片 / 文本 / Office / HTML / OCR / AI** 等可扩展转换类型。**非 Mac App Store** 分发，离线运行，零网络依赖（AI 功能除外）。
+**双形态 PDF 转换器**：原生 macOS 桌面版（SwiftUI）+ Web 版（B/S 架构），
+支持 **PDF ⇄ 图片 / 文本 / Office / HTML / OCR / AI** 等可扩展转换类型。
+
+- **桌面版**：非 Mac App Store 分发，离线运行，零网络依赖（AI 功能除外）
+- **Web 版**：服务器部署一次，任何浏览器（含手机）直接使用；Docker 一条命令部署，全部转换工具内置镜像
 
 ## 项目目标
 
@@ -11,15 +15,40 @@
 
 ## Web 版（B/S 架构，浏览器直接用）
 
-不想装任何东西？项目提供 **Web 版**：服务器部署一次，任何浏览器（含手机）直接使用，
-功能与桌面版一致，转换引擎完全相同。Docker 一条命令部署，全部 CLI 工具内置镜像：
+服务器部署一次，任何浏览器（含手机）直接使用。转换引擎与桌面版一一对应：
+Poppler / qpdf / Ghostscript / Tesseract / LibreOffice 以子进程调用（与桌面版一致），
+macOS 专属的 PDFKit 与 WebKit 分别由 PyMuPDF 与 Chromium (Playwright) 替代。
+
+![Web 版界面](docs/web-ui.png)
+
+### 功能与部署
+
+- 拖拽上传、23 种转换类型、逐类型参数面板（DPI / 页码范围 / 压缩档位 / 水印字号 / OCR 语言预设等）
+- 任务队列：并发上限、实时进度（SSE）、失败重试、输出下载与一键清空
+- 缺工具时给出可复制的安装命令与官网链接；支持按类型校验上传文件扩展名
+
+**Docker 部署（推荐，全部 CLI 工具已内置镜像）：**
 
 ```bash
 cd web && docker compose up -d --build
 # 浏览器打开 http://localhost:8000
 ```
 
-详见 [web/README.md](web/README.md)。
+**本地运行（开发）：** `pip install -r web/requirements.txt` 后 `python web/run.py`，
+并按需安装 poppler / qpdf / ghostscript / tesseract / libreoffice（缺哪个功能就少哪个，页面会提示）。
+
+![工具箱](docs/web-toolbox.png)
+
+### 常用环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `DEEPSEEK_API_KEY` | 空 | AI 功能的服务端 Key（不设则前端本地填写） |
+| `PDFCONV_ACCESS_TOKEN` | 空 | 设置后所有 API 需携带令牌（公网部署建议开启） |
+| `PDFCONV_UPLOAD_LIMIT_MB` | 100 | 单次上传大小上限 |
+| `PDFCONV_MAX_CONCURRENT` | 2 | 同时执行的转换任务数 |
+
+完整 API 一览、安全加固建议见 **[web/README.md](web/README.md)**。
 
 ## 系统要求与运行环境
 
@@ -159,17 +188,22 @@ cd Packages/PDFConverterCore && swift test
 
 > 💡 **v0.4.5 新增**：所有功能出错时都有清晰的错误提示 + 完整 stderr 详情。设置 → 查看日志可在 App 内查看最近 500 条日志。
 
+> 🌐 **Web 版引擎差异**：功能与上表一致；其中 图片→PDF / 合并 / 旋转 / 水印 由 PyMuPDF 实现
+> （替代 macOS 专属 PDFKit），Office 互转统一走 LibreOffice headless（服务端无 AppleScript），
+> HTML→PDF 使用 Chromium (Playwright)。
+
 ## 部署说明
 
-### Docker / 容器化部署说明
+### Web 版（服务化 / 容器化部署）
 
-本项目目前为 **macOS 原生 GUI 应用**，基于 SwiftUI 及系统框架（PDFKit、AppKit）构建，因此 **暂不提供官方 Docker 容器化部署方案**。主要原因如下：
+需要给团队或多人提供服务时，使用 **Web 版**：Docker 镜像已内置全部转换工具
+（Poppler / qpdf / Ghostscript / Tesseract 中文包 / LibreOffice），一条命令即可对外提供 HTTP 服务，
+支持访问令牌鉴权、上传大小限制与任务并发控制，详见 [web/README.md](web/README.md)。
 
-- 运行依赖 macOS 系统能力与图形界面环境，无法直接运行于通用 Linux 容器中；
-- 转换依赖多项系统级工具（LibreOffice、Poppler、qpdf、Ghostscript、Tesseract），当前通过主机本地安装提供，而非内置于应用内部；
-- 目前未提供 headless / CLI / Server 运行模式，无可供远程调用的 HTTP API 服务入口。
+### 桌面版（macOS 分发）
 
-如有服务化部署需求，后续版本可考虑增加独立的 **Server / CLI 模式**（例如 FastAPI + 后台命令调用），届时将补充 Dockerfile 与部署文档。在此之前，建议仍在 macOS 本地构建运行。
+桌面版为 macOS 原生 GUI 应用，基于 SwiftUI 及系统框架（PDFKit、AppKit）构建，
+以 DMG 形态分发，不提供容器化部署；服务器 / 多人使用场景请使用上方 Web 版。
 
 ## 项目架构
 
