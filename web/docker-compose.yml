@@ -1,0 +1,20 @@
+services:
+  pdfconvert:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - pdfconv-data:/data
+    environment:
+      # AI 功能（可选）：填写 DeepSeek Key 后前端无需再配置
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_BASE_URL=https://api.deepseek.com
+      - DEEPSEEK_MODEL=deepseek-chat
+      # 可选：设置后所有 API 需携带 X-Access-Token 头（或 ?token= 参数）
+      - PDFCONV_ACCESS_TOKEN=${PDFCONV_ACCESS_TOKEN:-}
+      - PDFCONV_UPLOAD_LIMIT_MB=100
+      - PDFCONV_MAX_CONCURRENT=2
+    restart: unless-stopped
+
+volumes:
+  pdfconv-data:

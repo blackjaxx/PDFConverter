@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Converter Web</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --panel: #ffffff; --border: #e3e3e6; --text: #1d1d1f;
+    --secondary: #6e6e73; --accent: #0a84ff; --green: #34c759; --red: #ff3b30;
+    --orange: #ff9500; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+  .app { display: grid; grid-template-columns: 220px 1fr 340px; height: 100vh; }
+
+  /* ── 侧边栏 ── */
+  .sidebar { background: #ececee; border-right: 1px solid var(--border);
+             overflow-y: auto; padding: 14px 10px; }
+  .sidebar h1 { font-size: 15px; padding: 4px 8px 12px; color: var(--secondary); }
+  .cat { font-size: 11px; font-weight: 600; color: var(--secondary);
+         padding: 12px 8px 4px; text-transform: uppercase; }
+  .type-row { display: flex; align-items: center; justify-content: space-between;
+              padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+  .type-row:hover { background: #dfdfe3; }
+  .type-row.active { background: var(--accent); color: #fff; }
+  .badge { font-size: 10px; padding: 1px 7px; border-radius: 99px; font-weight: 600; }
+  .badge.install { background: #ffe5e0; color: var(--red); }
+  .badge.key { background: #fff3d6; color: var(--orange); }
+  .type-row.active .badge { background: rgba(255,255,255,.25); color: #fff; }
+
+  /* ── 主面板 ── */
+  .main { overflow-y: auto; padding: 20px 24px; }
+  .main-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .main-header h2 { font-size: 20px; }
+  .engine { font-size: 12px; color: var(--secondary); margin-left: 10px; }
+  .btn { border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px;
+         cursor: pointer; background: var(--accent); color: #fff; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.secondary { background: #e8e8ed; color: var(--text); }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .btn.danger { background: #ffe5e0; color: var(--red); }
+  .banner { background: #fff3d6; color: #8a6d00; border-radius: var(--radius);
+            padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+  .banner.error { background: #ffe5e0; color: var(--red); }
+
+  .dropzone { border: 2px dashed #c7c7cc; border-radius: var(--radius); text-align: center;
+              padding: 34px 20px; color: var(--secondary); cursor: pointer; transition: .15s; }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: rgba(10,132,255,.06); }
+  .dropzone .big { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .filelist { list-style: none; margin: 10px 0; }
+  .filelist li { display: flex; align-items: center; gap: 8px; background: var(--panel);
+                 border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px;
+                 font-size: 13px; margin-bottom: 6px; }
+  .filelist .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .filelist button { border: none; background: none; color: var(--secondary); cursor: pointer; }
+
+  .params { background: var(--panel); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 14px 16px; margin-top: 14px; }
+  .params h3 { font-size: 13px; margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .prow { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
+  .prow label { width: 80px; font-size: 12px; color: var(--secondary); flex-shrink: 0; }
+  .prow input[type=text], .prow input[type=password], .prow input[type=number], .prow select {
+      flex: 1; max-width: 320px; padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 7px; font-size: 13px; }
+  .prow .range { display: flex; align-items: center; gap: 6px; }
+  .prow .range input { width: 70px; }
+  .note { font-size: 12px; color: var(--secondary); margin-top: 14px; }
+
+  /* ── 任务队列 ── */
+  .queue { background: var(--panel); border-left: 1px solid var(--border);
+           display: flex; flex-direction: column; }
+  .queue header { display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+                  border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 600; }
+  .queue header .spacer { flex: 1; }
+  #jobList { flex: 1; overflow-y: auto; padding: 10px 12px; }
+  .job { border: 1px solid var(--border); border-radius: var(--radius);
+         padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+  .job .row1 { display: flex; align-items: center; gap: 8px; }
+  .job .row1 .title { flex: 1; font-weight: 600; overflow: hidden;
+                      text-overflow: ellipsis; white-space: nowrap; }
+  .status { font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 600; flex-shrink: 0; }
+  .status.pending { background: #ececee; color: var(--secondary); }
+  .status.running { background: #e0edff; color: var(--accent); }
+  .status.completed { background: #dcf5e4; color: var(--green); }
+  .status.failed { background: #ffe5e0; color: var(--red); }
+  .status.cancelled { background: #fff3d6; color: var(--orange); }
+  .progress { height: 5px; background: #ececee; border-radius: 99px; margin: 8px 0 4px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
+  .job .error { color: var(--red); font-size: 12px; margin-top: 6px; cursor: pointer; }
+  .job .details { background: #f6f6f8; border-radius: 7px; padding: 8px; margin-top: 6px;
+                  font-family: ui-monospace, monospace; font-size: 11px;
+                  white-space: pre-wrap; word-break: break-all; color: var(--secondary); }
+  .job .actions { display: flex; gap: 8px; margin-top: 8px; }
+  .job .outputs { margin-top: 8px; }
+  .job .outputs a { display: flex; align-items: center; gap: 6px; font-size: 12px;
+                    color: var(--accent); text-decoration: none; padding: 4px 0; }
+  .job .outputs a:hover { text-decoration: underline; }
+  .empty { text-align: center; color: var(--secondary); padding: 40px 10px; font-size: 13px; }
+  #toolsReport { border-top: 1px solid var(--border); padding: 10px 14px; font-size: 12px;
+                 color: var(--secondary); }
+  #toolsReport .tool { display: inline-flex; align-items: center; gap: 4px; margin: 2px 8px 2px 0; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--green); } .dot.miss { background: var(--red); }
+  a.link { color: var(--accent); text-decoration: none; cursor: pointer; font-size: 12px; }
+
+  dialog { border: none; border-radius: var(--radius); padding: 22px; width: 380px; }
+  dialog::backdrop { background: rgba(0,0,0,.3); }
+  dialog h3 { margin-bottom: 12px; font-size: 15px; }
+  dialog p { font-size: 12px; color: var(--secondary); margin-bottom: 10px; line-height: 1.6; }
+  dialog input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+                 border-radius: 7px; margin-bottom: 12px; font-size: 13px; }
+  dialog .btns { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h1>PDF Converter</h1>
+    <div id="typeList"></div>
+  </aside>
+
+  <main class="main">
+    <div class="main-header">
+      <div><h2 id="typeTitle" style="display:inline"></h2><span class="engine" id="engineLabel"></span></div>
+      <button class="btn" id="startBtn">开始转换</button>
+    </div>
+    <div id="banner"></div>
+    <div class="dropzone" id="dropzone">
+      <div class="big">拖拽文件到此处</div>
+      <div>或点击选择文件</div>
+      <input type="file" id="fileInput" multiple hidden>
+    </div>
+    <ul class="filelist" id="fileList"></ul>
+    <div class="params" id="paramsPanel"></div>
+    <p class="note">转换完成后在右侧任务队列中点击文件名下载。文件与输出在服务器保留，直到你移除对应任务。</p>
+  </main>
+
+  <aside class="queue">
+    <header>
+      任务队列 <span id="jobCount"></span>
+      <span class="spacer"></span>
+      <button class="btn small secondary" id="clearDone">清空已完成</button>
+      <button class="btn small danger" id="clearAll">清空全部</button>
+    </header>
+    <div id="jobList"><div class="empty">暂无任务<br>添加文件并点击「开始转换」</div></div>
+    <footer id="toolsReport"></footer>
+  </aside>
+</div>
+
+<dialog id="keyDialog">
+  <h3>DeepSeek API Key</h3>
+  <p>AI 摘要 / 翻译 / 转 Markdown 需要 DeepSeek Key（<a href="https://platform.deepseek.com/api_keys" target="_blank">获取</a>）。
+     Key 仅保存在你浏览器的 localStorage，并只在你提交 AI 任务时随请求发送给本服务。</p>
+  <input type="password" id="keyInput" placeholder="sk-...">
+  <div class="btns">
+    <button class="btn secondary" id="keyClear">清除</button>
+    <button class="btn" id="keySave">保存</button>
+  </div>
+</dialog>
+
+<script>
+const API = '';
+let TYPES = [], CATEGORIES = [], TOOL_STATUS = {}, HAS_SERVER_KEY = false;
+let selectedType = null, files = [];
+
+const $ = id => document.getElementById(id);
+
+async function init() {
+  const [tRes, toolsRes] = await Promise.all([
+    fetch(API + '/api/types').then(r => r.json()),
+    fetch(API + '/api/tools').then(r => r.json())
+  ]);
+  TYPES = tRes.types; CATEGORIES = tRes.categories;
+  TOOL_STATUS = toolsRes.tools; HAS_SERVER_KEY = toolsRes.hasServerKey;
+  renderTypes(); renderTools();
+  selectType(TYPES[0].key);
+  connectSSE();
+}
+
+function typeByKey(key) { return TYPES.find(t => t.key === key); }
+
+function renderTypes() {
+  const box = $('typeList');
+  box.innerHTML = '';
+  for (const cat of CATEGORIES) {
+    const items = TYPES.filter(t => t.category === cat.key);
+    if (!items.length) continue;
+    const h = document.createElement('div');
+    h.className = 'cat'; h.textContent = cat.display;
+    box.appendChild(h);
+    for (const t of items) {
+      const row = document.createElement('div');
+      row.className = 'type-row' + (selectedType === t.key ? ' active' : '');
+      const name = document.createElement('span'); name.textContent = t.display;
+      row.appendChild(name);
+      if (!t.available) { const b = document.createElement('span'); b.className = 'badge install'; b.textContent = '需安装'; row.appendChild(b); }
+      else if (t.needsKey && !HAS_SERVER_KEY && !localStorage.getItem('deepseek_key')) {
+        const b = document.createElement('span'); b.className = 'badge key'; b.textContent = '需 Key'; row.appendChild(b);
+      }
+      row.onclick = () => selectType(t.key);
+      box.appendChild(row);
+    }
+  }
+}
+
+function selectType(key) {
+  selectedType = key;
+  const t = typeByKey(key);
+  $('typeTitle').textContent = t.display;
+  $('engineLabel').textContent = '引擎: ' + t.engineDisplay;
+  if (!t.multiple) files = files.slice(0, 1);
+  $('fileInput').multiple = t.multiple;
+  renderTypes(); renderFiles(); renderParams(); updateStart();
+}
+
+function renderParams() {
+  const t = typeByKey(selectedType);
+  const panel = $('paramsPanel');
+  panel.innerHTML = '<h3><span>参数</span><a class="link" onclick="resetParams()">重置</a></h3>';
+  if (!t.params.length) {
+    const p = document.createElement('p');
+    p.className = 'note'; p.style.margin = '0';
+    p.textContent = '此类型无需额外参数';
+    panel.appendChild(p);
+    return;
+  }
+  for (const def of t.params) {
+    if (def.onlyFor && def.onlyFor !== selectedType) continue;
+    const row = document.createElement('div'); row.className = 'prow';
+    const label = document.createElement('label'); label.textContent = def.label;
+    row.appendChild(label);
+    const saved = getParam(def.key);
+    if (def.type === 'stepper') {
+      const input = document.createElement('input');
+      input.type = 'number'; input.min = def.min; input.max = def.max; input.step = def.step;
+      input.value = saved ?? def.default; input.dataset.param = def.key;
+      input.oninput = () => setParam(def.key, Number(input.value));
+      row.appendChild(input);
+    } else if (def.type === 'select') {
+      const sel = document.createElement('select');
+      sel.dataset.param = def.key;
+      for (const [v, label] of def.options) {
+        const opt = document.createElement('option'); opt.value = v; opt.textContent = label;
+        sel.appendChild(opt);
+      }
+      sel.value = saved ?? def.default;
+      sel.onchange = () => setParam(def.key, isNaN(Number(sel.value)) ? sel.value : Number(sel.value));
+      row.appendChild(sel);
+    } else if (def.type === 'range') {
+      const wrap = document.createElement('div'); wrap.className = 'range';
+      const cur = saved || {};
+      wrap.innerHTML = `<span style="font-size:12px;color:var(--secondary)">第</span>
+        <input type="number" min="1" placeholder="1" id="rangeStart" value="${cur.start ?? ''}">
+        <span style="font-size:12px;color:var(--secondary)">页 至</span>
+        <input type="number" min="1" placeholder="末页" id="rangeEnd" value="${cur.end ?? ''}">`;
+      row.appendChild(wrap);
+    } else {
+      const input = document.createElement('input');
+      input.type = def.type === 'password' ? 'password' : 'text';
+      input.placeholder = def.placeholder || '';
+      input.value = saved ?? def.default ?? '';
+      input.dataset.param = def.key;
+      input.oninput = () => setParam(def.key, input.value);
+      row.appendChild(input);
+    }
+    panel.appendChild(row);
+  }
+  // range 字段即时收集
+  const rs = $('rangeStart'), re = $('rangeEnd');
+  if (rs) {
+    const collect = () => {
+      const start = parseInt(rs.value), end = parseInt(re.value);
+      setParam('pageRange', start ? { start, end: end || null } : null);
+    };
+    rs.oninput = collect; re.oninput = collect;
+  }
+}
+
+let paramState = {};
+function getParam(key) { return paramState[key]; }
+function setParam(key, value) { paramState[key] = value; }
+function resetParams() { paramState = {}; renderParams(); }
+
+function collectParams() {
+  const out = {};
+  for (const def of typeByKey(selectedType).params) {
+    if (def.onlyFor && def.onlyFor !== selectedType) continue;
+    if (def.type !== 'range') out[def.key] = paramState[def.key] ?? def.default ?? null;
+  }
+  const start = parseInt($('rangeStart')?.value), end = parseInt($('rangeEnd')?.value);
+  if (start) out.pageRange = { start, end: end || null };
+  return out;
+}
+
+/* ── 文件选择 ── */
+const dropzone = $('dropzone');
+dropzone.onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => addFiles(e.target.files);
+dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('drag'); };
+dropzone.ondragleave = () => dropzone.classList.remove('drag');
+dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('drag'); addFiles(e.dataTransfer.files); };
+
+function addFiles(list) {
+  const t = typeByKey(selectedType);
+  const incoming = [...list];
+  if (!t.multiple) files = incoming.slice(0, 1);
+  else { files = files.concat(incoming.filter(f => !files.some(x => x.name === f.name && x.size === f.size))); }
+  renderFiles(); updateStart();
+}
+function renderFiles() {
+  const ul = $('fileList'); ul.innerHTML = '';
+  for (const f of files) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>📄</span><span class="name" title="${f.name}">${f.name}（${(f.size/1048576).toFixed(1)} MB）</span>`;
+    const btn = document.createElement('button'); btn.textContent = '✕'; btn.title = '移除';
+    btn.onclick = () => { files = files.filter(x => x !== f); renderFiles(); updateStart(); };
+    li.appendChild(btn); ul.appendChild(li);
+  }
+}
+function updateStart() {
+  const t = typeByKey(selectedType);
+  let ok = files.length > 0;
+  if (selectedType === 'mergePDF') ok = ok && files.length >= 2;
+  $('startBtn').disabled = !ok;
+}
+
+/* ── 提交任务 ── */
+$('startBtn').onclick = async () => {
+  const t = typeByKey(selectedType);
+  const params = collectParams();
+  if (t.needsKey && !HAS_SERVER_KEY) {
+    const key = localStorage.getItem('deepseek_key');
+    if (!key) { $('keyDialog').showModal(); return; }
+    params.apiKey = key;
+  }
+  const fd = new FormData();
+  fd.append('type', selectedType);
+  fd.append('params', JSON.stringify(params));
+  for (const f of files) fd.append('files', f, f.name);
+  const resp = await fetch(API + '/api/jobs', { method: 'POST', body: fd });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    alert('提交失败: ' + (err.detail || '未知错误'));
+    return;
+  }
+  files = []; renderFiles(); updateStart();
+};
+
+/* ── SSE 实时任务流 ── */
+let jobs = [];
+function connectSSE() {
+  const es = new EventSource(API + '/api/events');
+  es.onmessage = e => { jobs = JSON.parse(e.data); renderQueue(); };
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 3000); };
+}
+
+const STATUS_LABEL = { pending: '等待', running: '进行中', completed: '完成', failed: '失败', cancelled: '已取消' };
+
+function renderQueue() {
+  const box = $('jobList');
+  $('jobCount').textContent = jobs.length ? `(${jobs.length})` : '';
+  if (!jobs.length) {
+    box.innerHTML = '<div class="empty">暂无任务<br>添加文件并点击「开始转换」</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const j of jobs) {
+    const el = document.createElement('div'); el.className = 'job';
+    const row1 = document.createElement('div'); row1.className = 'row1';
+    row1.innerHTML = `<span class="title">${j.display}</span>
+      <span class="status ${j.status}">${STATUS_LABEL[j.status] || j.status}</span>`;
+    if (['completed', 'failed', 'cancelled'].includes(j.status)) {
+      const x = document.createElement('button');
+      x.className = 'filelist'; x.style.cssText = 'border:none;background:none;cursor:pointer;color:var(--secondary)';
+      x.textContent = '✕'; x.title = '移除任务'; x.onclick = () => api('DELETE', `/api/jobs/${j.id}`);
+      row1.appendChild(x);
+    }
+    el.appendChild(row1);
+
+    if (j.status === 'running' || j.status === 'completed') {
+      const p = document.createElement('div'); p.className = 'progress';
+      p.innerHTML = `<div style="width:${Math.round(j.progress * 100)}%"></div>`;
+      el.appendChild(p);
+    }
+    if (j.status === 'failed' && j.error) {
+      const err = document.createElement('div'); err.className = 'error';
+      err.textContent = '⚠ ' + j.error;
+      err.onclick = () => {
+        const d = el.querySelector('.details');
+        if (d) d.remove();
+        else {
+          const det = document.createElement('div'); det.className = 'details';
+          det.textContent = j.details || '（无详细信息）';
+          el.appendChild(det);
+        }
+      };
+      el.appendChild(err);
+    }
+    if (j.outputs?.length) {
+      const outs = document.createElement('div'); outs.className = 'outputs';
+      for (const o of j.outputs) {
+        const a = document.createElement('a');
+        a.href = `${API}/api/jobs/${j.id}/files/${encodeURIComponent(o.name)}`;
+        a.download = o.name;
+        a.innerHTML = `⬇ ${o.name}（${(o.size/1048576).toFixed(2)} MB）`;
+        outs.appendChild(a);
+      }
+      el.appendChild(outs);
+    }
+    if (j.status === 'failed' || j.status === 'cancelled') {
+      const act = document.createElement('div'); act.className = 'actions';
+      const retry = document.createElement('button'); retry.className = 'btn small secondary';
+      retry.textContent = '重试'; retry.onclick = () => api('POST', `/api/jobs/${j.id}/retry`);
+      act.appendChild(retry); el.appendChild(act);
+    }
+    box.appendChild(el);
+  }
+}
+
+async function api(method, path, body) {
+  await fetch(API + path, { method, ...body });
+  jobs = await fetch(API + '/api/jobs').then(r => r.json());
+  renderQueue();
+}
+$('clearDone').onclick = () => api('POST', '/api/jobs/clear-completed');
+$('clearAll').onclick = () => api('POST', '/api/jobs/clear-all');
+
+/* ── 工具状态 ── */
+function renderTools() {
+  const box = $('toolsReport');
+  const labels = { pdftoppm: 'pdftoppm', pdftotext: 'pdftotext', qpdf: 'qpdf', gs: 'Ghostscript',
+                   soffice: 'LibreOffice', tesseract: 'Tesseract', playwright: 'Chromium' };
+  let html = '';
+  for (const [k, v] of Object.entries(TOOL_STATUS)) {
+    if (!(k in labels)) continue;
+    html += `<span class="tool"><span class="dot ${v ? 'ok' : 'miss'}"></span>${labels[k]}</span>`;
+  }
+  html += `<div style="margin-top:4px">DeepSeek Key: ${HAS_SERVER_KEY ? '服务器已配置' :
+    `<a class="link" onclick="$('keyDialog').showModal()">浏览器本地设置</a>`}</div>`;
+  if (Object.values(TOOL_STATUS).some(v => !v)) {
+    html += `<div style="margin-top:6px;color:var(--orange)">部分工具未安装，相关功能不可用（Docker 部署已内置全部工具）。</div>`;
+  }
+  box.innerHTML = html;
+}
+
+$('keySave').onclick = () => {
+  const v = $('keyInput').value.trim();
+  if (v) localStorage.setItem('deepseek_key', v);
+  $('keyDialog').close(); renderTypes();
+};
+$('keyClear').onclick = () => { localStorage.removeItem('deepseek_key'); $('keyDialog').close(); renderTypes(); };
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('startBtn').click();
+});
+
+init();
+</script>
+</body>
+</html>

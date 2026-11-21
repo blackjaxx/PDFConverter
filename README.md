@@ -9,6 +9,18 @@
 ![App Icon](docs/app-icon-preview.png)
 
 
+## Web 版（B/S 架构，浏览器直接用）
+
+不想装任何东西？项目提供 **Web 版**：服务器部署一次，任何浏览器（含手机）直接使用，
+功能与桌面版一致，转换引擎完全相同。Docker 一条命令部署，全部 CLI 工具内置镜像：
+
+```bash
+cd web && docker compose up -d --build
+# 浏览器打开 http://localhost:8000
+```
+
+详见 [web/README.md](web/README.md)。
+
 ## 系统要求与运行环境
 
 ### 最低要求（运行预编译 DMG）
