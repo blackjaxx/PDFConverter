@@ -178,10 +178,11 @@
            box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* 全局 * {margin:0} 会覆盖 <dialog> 的 UA 默认 margin:auto，必须显式恢复居中 */
+  /* 居中用 transform 方案：不依赖 inset/fit-content，全内核一致 */
   dialog { border: none; border-radius: var(--radius); padding: 24px; width: 400px;
            box-shadow: 0 12px 40px rgba(0,0,0,.2);
-           position: fixed; inset: 0; margin: auto; height: fit-content; }
+           position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+           max-width: calc(100vw - 28px); max-height: calc(100vh - 28px); overflow: auto; }
   dialog::backdrop { background: rgba(15,18,25,.4); }
   .dlg-header { display: flex; align-items: center; justify-content: space-between;
                 margin-bottom: 12px; }
@@ -305,14 +306,36 @@ let selectedType = null, files = [], jobs = [];
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+// <dialog> 兼容包装：Safari 15.4 之前没有 showModal，降级为 open 属性
+function openDialog(dlg) {
+  if (typeof dlg.showModal === 'function') dlg.showModal();
+  else dlg.setAttribute('open', '');
+}
+function closeDialog(dlg) {
+  if (typeof dlg.close === 'function') dlg.close();
+  else dlg.removeAttribute('open');
+}
+function openKeyDialog() { openDialog($('keyDialog')); }
+
 let toastTimer;
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); toast('已复制：' + text); }
+  // 通过局域网 IP（http://）访问时属于非安全上下文，没有 navigator.clipboard，
+  // 此时退回 execCommand 兼容方案（Chrome / Edge / Safari / Firefox 均可用）
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); toast('已复制：' + text); return; } catch {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); toast('已复制：' + text); }
   catch { toast('复制失败，请手动选择文本'); }
+  ta.remove();
 }
 
 async function init() {
@@ -394,7 +417,7 @@ function renderGuidance() {
     box.innerHTML = `<div class="banner warn">部分工具未安装（${missing.map(toolLabel).join('、')}），相关功能不可用。展开右下角 <b>🧰 环境与工具</b> 可复制安装命令。</div>`;
   }
   if (t.needsKey && !HAS_SERVER_KEY && !localStorage.getItem('deepseek_key')) {
-    box.innerHTML += `<div class="banner warn">使用此功能需要 DeepSeek API Key，<a class="link" onclick="$('keyDialog').showModal()">点此配置</a>（仅存于浏览器本地）。</div>`;
+    box.innerHTML += `<div class="banner warn">使用此功能需要 DeepSeek API Key，<a class="link" onclick="openKeyDialog()">点此配置</a>（仅存于浏览器本地）。</div>`;
   }
 }
 
@@ -562,7 +585,7 @@ $('startBtn').onclick = async () => {
   if (rng && rng.end && rng.start > rng.end) { toast('页码范围无效：起始页大于结束页'); return; }
   if (t.needsKey && !HAS_SERVER_KEY) {
     const key = localStorage.getItem('deepseek_key');
-    if (!key) { $('keyDialog').showModal(); return; }
+    if (!key) { openKeyDialog(); return; }
     params.apiKey = key;
   }
   const fd = new FormData();
@@ -711,16 +734,16 @@ $('toolRefresh').onclick = async e => {
 };
 
 /* ── Key 设置 ── */
-$('keyClose').onclick = () => $('keyDialog').close();
+$('keyClose').onclick = () => closeDialog($('keyDialog'));
 $('keyDialog').addEventListener('click', e => {
-  if (e.target === $('keyDialog')) $('keyDialog').close();  // 点击遮罩关闭
+  if (e.target === $('keyDialog')) closeDialog($('keyDialog'));  // 点击遮罩关闭
 });
 $('keySave').onclick = () => {
   const v = $('keyInput').value.trim();
   if (v) localStorage.setItem('deepseek_key', v);
-  $('keyDialog').close(); renderTypes(); renderGuidance();
+  closeDialog($('keyDialog')); renderTypes(); renderGuidance();
 };
-$('keyClear').onclick = () => { localStorage.removeItem('deepseek_key'); $('keyDialog').close(); renderTypes(); renderGuidance(); };
+$('keyClear').onclick = () => { localStorage.removeItem('deepseek_key'); closeDialog($('keyDialog')); renderTypes(); renderGuidance(); };
 
 $('typeToggle').onclick = () => document.querySelector('.sidebar').classList.toggle('open');
 
