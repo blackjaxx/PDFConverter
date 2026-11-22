@@ -33,6 +33,16 @@ uvicorn app.main:app --port 8000
 python run.py --port 8000
 ```
 
+## PWA：安装到手机桌面
+
+Web 版同时是一个可安装的 PWA（manifest + Service Worker）：
+
+- **Android Chrome**：访问后自动弹出安装提示，或点侧边栏「📲 安装到手机桌面」；
+  安装后桌面出现独立图标、全屏 standalone 运行、应用外壳可离线打开（转换需联网）
+- **iOS Safari**：分享 → 「添加到主屏幕」（apple-touch-icon 已内置）
+- **要求安全上下文**：HTTPS 或 localhost。局域网 IP + HTTP 访问功能完整但 Chrome 不提供安装入口
+- SW 缓存策略：页面网络优先（断网回退缓存的壳）、静态资源缓存优先、`/api/*` 一律直通
+
 ## Windows 上使用
 
 **作为客户端**：B/S 架构与操作系统无关——服务器跑在任何地方（Linux / macOS / NAS / 云主机），
@@ -50,6 +60,18 @@ Windows 上用浏览器打开服务地址即可，无需安装任何东西。
 3. `python run.py --port 8000`（局域网访问加 `--host 0.0.0.0`）
 
 也可以直接用 **Docker Desktop / WSL2** 跑镜像，效果与 Linux 相同。
+
+## 安卓客户端（PWA 安装到桌面）
+
+Web 版本身就是**可安装的 PWA**——安卓 Chrome 访问后会提示「安装应用」，或点侧边栏
+「📲 安装到手机桌面」按钮。安装后桌面出现独立图标、全屏运行（无浏览器地址栏）、
+断网时仍能打开界面（转换需联网）。iOS 上通过 Safari「分享 → 添加到主屏幕」获得同样体验。
+
+实现：`static/manifest.webmanifest`（图标 192/512 + maskable、standalone 显示模式）
++ `static/sw.js`（应用外壳缓存：页面与静态资源离线可用，API 一律直通网络不缓存）。
+
+> ⚠️ PWA 安装要求安全上下文（HTTPS 或 localhost）。局域网 IP + HTTP 访问时功能完整，
+> 但 Chrome 不提供安装入口——公网部署请套 HTTPS。
 
 ## 浏览器兼容性
 

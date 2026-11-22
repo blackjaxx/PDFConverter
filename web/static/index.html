@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PDF Converter Web</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%233d7eff'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>P</text></svg>">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#3d7eff">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PDF转换">
 <style>
   :root {
     --bg: #f4f5f7; --panel: #ffffff; --sidebar: #fbfbfc; --border: #e6e8ec;
@@ -241,6 +248,9 @@
       <button class="btn small secondary" id="typeToggle">切换类型 ▾</button>
     </div>
     <div id="typeList" class="type-wrap"></div>
+    <button class="btn small" id="installBtn" style="display:none;margin:10px 8px 0;width:calc(100% - 16px)">
+      📲 安装到手机桌面
+    </button>
   </aside>
 
   <main class="main">
@@ -337,6 +347,32 @@ async function copyText(text) {
   catch { toast('复制失败，请手动选择文本'); }
   ta.remove();
 }
+
+// PWA：Service Worker 注册 + 安装入口
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {
+    // 非 HTTPS 且非 localhost 时注册失败（页面功能不受影响，仅无离线/安装能力）
+  });
+}
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $('installBtn').style.display = 'inline-flex';
+});
+window.addEventListener('DOMContentLoaded', () => {
+  const btn = $('installBtn');
+  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
+    if (btn) btn.style.display = 'none';
+  }
+  btn.onclick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') { btn.style.display = 'none'; toast('已安装到桌面'); }
+    deferredPrompt = null;
+  };
+});
 
 async function init() {
   const [tRes, toolsRes] = await Promise.all([
@@ -723,6 +759,19 @@ function renderToolbox() {
   if (missing.length) {
     body.insertAdjacentHTML('beforeend',
       `<p class="note" style="margin:8px 0 0">安装后重启服务即可自动识别（本地开发：重启 uvicorn；Docker：重新 build）。</p>`);
+  }
+  // PWA 安装提示：Android Chrome 用安装按钮；iOS 走「分享 → 添加到主屏幕」
+  const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (installed) {
+    body.insertAdjacentHTML('beforeend',
+      `<p class="note" style="margin:8px 0 0">✅ 已以应用模式运行（桌面图标打开）。</p>`);
+  } else if (isIOS) {
+    body.insertAdjacentHTML('beforeend',
+      `<p class="note" style="margin:8px 0 0">📲 iOS 安装方式：Safari 打开本页 → 分享 → 「添加到主屏幕」。</p>`);
+  } else {
+    body.insertAdjacentHTML('beforeend',
+      `<p class="note" style="margin:8px 0 0">📲 Android：点侧边栏「安装到手机桌面」，或等 Chrome 弹出安装提示。需 HTTPS 或 localhost 环境。</p>`);
   }
 }
 $('toolRefresh').onclick = async e => {

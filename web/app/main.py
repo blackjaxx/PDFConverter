@@ -222,3 +222,18 @@ app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 @app.get("/")
 async def index():
     return FileResponse(WEB_DIR / "static" / "index.html")
+
+
+# PWA：sw.js 必须从根作用域提供（/static/sw.js 的作用域只有 /static/*，
+# 无法控制页面本身）；manifest 同样放根路径。
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(WEB_DIR / "static" / "sw.js",
+                        media_type="application/javascript",
+                        headers={"Service-Worker-Allowed": "/"})
+
+
+@app.get("/manifest.webmanifest")
+async def webmanifest():
+    return FileResponse(WEB_DIR / "static" / "manifest.webmanifest",
+                        media_type="application/manifest+json")
